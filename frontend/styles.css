@@ -751,6 +751,120 @@ body {
   stroke: #16a34a;
 }
 
+/* "다음 학습 추천" */
+.curriculum-node-next rect {
+  stroke: var(--accent);
+  stroke-width: 2.5;
+  stroke-dasharray: 5 3;
+}
+
+.curriculum-nextup {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.curriculum-nextup-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.curriculum-nextup-chip {
+  border: 1.5px dashed var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.curriculum-nextup-chip:hover {
+  border-style: solid;
+}
+
+/* 퀴즈 */
+.curriculum-quiz-wrap {
+  width: 100%;
+}
+
+.curriculum-quiz {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.curriculum-quiz-question {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  background: var(--surface);
+}
+
+.curriculum-quiz-question-text {
+  margin: 0 0 8px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.curriculum-quiz-options {
+  display: grid;
+  gap: 6px;
+}
+
+.curriculum-quiz-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+
+.curriculum-quiz-option input {
+  accent-color: var(--accent);
+}
+
+.curriculum-quiz-feedback {
+  margin: 10px 0 0;
+  font-size: 0.83rem;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  line-height: 1.5;
+}
+
+.curriculum-quiz-feedback-correct {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.curriculum-quiz-feedback-wrong {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+@media (prefers-color-scheme: dark) {
+  .curriculum-quiz-feedback-correct {
+    background: #123a2c;
+    color: #6ee7b7;
+  }
+  .curriculum-quiz-feedback-wrong {
+    background: #401d1d;
+    color: #fca5a5;
+  }
+}
+
+.curriculum-quiz-result {
+  font-weight: 700;
+  margin: 0 0 10px;
+}
+
 .tag.tag-neutral { background: var(--chip-bg); color: var(--text-muted); }
 .tag.tier-0 { background: var(--tier-0-bg); color: var(--tier-0-text); }
 .tag.tier-1 { background: var(--tier-1-bg); color: var(--tier-1-text); }

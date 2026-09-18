@@ -512,7 +512,15 @@ function renderCurriculumGraph(container, data) {
   detailPanel.className = "curriculum-detail";
   detailPanel.textContent = "노드를 클릭하면 자세한 설명이 여기 나와요.";
 
-  const nodeContext = { curriculumId: data.id, refreshProgress: progress.refresh };
+  const nextUpEl = document.createElement("div");
+  nextUpEl.className = "curriculum-nextup";
+  const nodeGroups = new Map();
+
+  const nodeContext = {
+    curriculumId: data.id,
+    refreshProgress: progress.refresh,
+    refreshNextUp: () => refreshNextUp(data.nodes, data.edges || [], nodeGroups, nextUpEl, detailPanel, nodeContext),
+  };
 
   const nodesGroup = createSvgEl("g", { class: "curriculum-nodes" });
   data.nodes.forEach((node) => {
@@ -565,12 +573,46 @@ function renderCurriculumGraph(container, data) {
       }
     });
 
+    nodeGroups.set(node.id, g);
     nodesGroup.appendChild(g);
   });
   svg.appendChild(nodesGroup);
 
+  container.appendChild(nextUpEl);
+  nodeContext.refreshNextUp();
+
   graphWrap.appendChild(svg);
   container.append(graphWrap, detailPanel);
+}
+
+// "다음 학습 추천": 선수 노드를 전부 완료한, 아직 안 끝낸 노드들을 배너(클릭하면 상세
+// 패널이 열림) + 그래프 안 하이라이트(.curriculum-node-next)로 동시에 보여준다.
+// LLM 호출 없이 순수 그래프 계산이라 완료 토글마다 즉시 다시 불러도 비용이 없다.
+function refreshNextUp(nodes, edges, nodeGroups, nextUpEl, detailPanel, context) {
+  const unlocked = computeUnlockedNodeIds(nodes, edges);
+
+  nodeGroups.forEach((g, nodeId) => {
+    g.classList.toggle("curriculum-node-next", unlocked.has(nodeId));
+  });
+
+  nextUpEl.innerHTML = "";
+  if (!unlocked.size) return;
+
+  const label = document.createElement("span");
+  label.className = "curriculum-nextup-label";
+  label.textContent = "다음 학습 추천";
+  nextUpEl.appendChild(label);
+
+  nodes
+    .filter((n) => unlocked.has(n.id))
+    .forEach((n) => {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "curriculum-nextup-chip";
+      chip.textContent = n.title;
+      chip.addEventListener("click", () => showCurriculumDetail(detailPanel, n, context, nodeGroups.get(n.id)));
+      nextUpEl.appendChild(chip);
+    });
 }
 
 // panel: 설명을 그릴 컨테이너. node: 클릭된 노드 데이터(완료 상태를 여기 직접 mutate함).
@@ -611,6 +653,7 @@ function showCurriculumDetail(panel, node, context, nodeGroupEl) {
   if (context && context.curriculumId) {
     actions.appendChild(buildCompleteToggleButton(node, context, nodeGroupEl));
     actions.appendChild(buildExplainSection(node, context));
+    actions.appendChild(buildQuizSection(node, context, nodeGroupEl));
   }
 
   panel.appendChild(actions);
@@ -638,6 +681,7 @@ function buildCompleteToggleButton(node, context, nodeGroupEl) {
       setLabel();
       if (nodeGroupEl) nodeGroupEl.classList.toggle("curriculum-node-completed", nextState);
       if (context.refreshProgress) context.refreshProgress();
+      if (context.refreshNextUp) context.refreshNextUp();
     } catch (err) {
       console.error(err);
     } finally {
@@ -687,6 +731,150 @@ function buildExplainSection(node, context) {
 
   wrap.append(button, textEl);
   return wrap;
+}
+
+// "학습 완료" 버튼은 자기 신고제라 실제 이해를 검증할 방법이 없었다 — 이 퀴즈가 그
+// 검증 루프. 객관식이라 채점은 서버 호출 없이 클라이언트에서 바로 되고, 문제 자체는
+// (explain처럼) 한 번 생성되면 캐싱되어 다시 눌러도 API를 또 부르지 않는다.
+function buildQuizSection(node, context, nodeGroupEl) {
+  const wrap = document.createElement("div");
+  wrap.className = "curriculum-quiz-wrap";
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "curriculum-action-btn";
+  button.textContent = "이해도 확인 퀴즈 풀기";
+
+  const quizEl = document.createElement("div");
+  quizEl.hidden = true;
+
+  const showQuiz = (questions) => {
+    button.hidden = true;
+    quizEl.hidden = false;
+    renderQuiz(quizEl, questions, node, context, nodeGroupEl);
+  };
+
+  if (node.quiz) {
+    showQuiz(node.quiz);
+  }
+
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    const originalText = button.textContent;
+    button.textContent = "AI가 퀴즈를 만드는 중... (최대 1분 정도 걸려요)";
+    try {
+      const data = await postJSON(`/api/curriculum/${context.curriculumId}/nodes/${node.id}/quiz`, {});
+      node.quiz = data.questions;
+      showQuiz(data.questions);
+    } catch (err) {
+      button.disabled = false;
+      button.textContent = originalText;
+      alert(err.message || "퀴즈를 만들지 못했어요.");
+    }
+  });
+
+  wrap.append(button, quizEl);
+  return wrap;
+}
+
+function renderQuiz(container, questions, node, context, nodeGroupEl) {
+  container.innerHTML = "";
+
+  const form = document.createElement("div");
+  form.className = "curriculum-quiz";
+
+  const questionEls = questions.map((q, qIndex) => {
+    const qWrap = document.createElement("div");
+    qWrap.className = "curriculum-quiz-question";
+
+    const qText = document.createElement("p");
+    qText.className = "curriculum-quiz-question-text";
+    qText.textContent = `${qIndex + 1}. ${q.question}`;
+    qWrap.appendChild(qText);
+
+    const optionsWrap = document.createElement("div");
+    optionsWrap.className = "curriculum-quiz-options";
+    q.options.forEach((optionText, optIndex) => {
+      const optionLabel = document.createElement("label");
+      optionLabel.className = "curriculum-quiz-option";
+
+      const radio = document.createElement("input");
+      radio.type = "radio";
+      radio.name = `quiz-${node.id}-q${qIndex}`;
+      radio.value = String(optIndex);
+
+      optionLabel.append(radio, document.createTextNode(optionText));
+      optionsWrap.appendChild(optionLabel);
+    });
+    qWrap.appendChild(optionsWrap);
+
+    const feedback = document.createElement("p");
+    feedback.className = "curriculum-quiz-feedback";
+    feedback.hidden = true;
+    qWrap.appendChild(feedback);
+
+    form.appendChild(qWrap);
+    return { qWrap, optionsWrap, feedback };
+  });
+
+  const submitBtn = document.createElement("button");
+  submitBtn.type = "button";
+  submitBtn.className = "curriculum-action-btn";
+  submitBtn.textContent = "채점하기";
+
+  const resultEl = document.createElement("p");
+  resultEl.className = "curriculum-quiz-result";
+  resultEl.hidden = true;
+
+  submitBtn.addEventListener("click", () => {
+    let correctCount = 0;
+    questions.forEach((q, qIndex) => {
+      const { optionsWrap, feedback } = questionEls[qIndex];
+      const selected = optionsWrap.querySelector("input:checked");
+      const selectedIndex = selected ? Number(selected.value) : -1;
+      const isCorrect = selectedIndex === q.correct_index;
+      if (isCorrect) correctCount += 1;
+
+      feedback.hidden = false;
+      feedback.textContent = isCorrect
+        ? `정답이에요! ${q.explanation}`
+        : `정답은 "${q.options[q.correct_index]}"예요. ${q.explanation}`;
+      feedback.classList.toggle("curriculum-quiz-feedback-correct", isCorrect);
+      feedback.classList.toggle("curriculum-quiz-feedback-wrong", !isCorrect);
+
+      optionsWrap.querySelectorAll("input").forEach((input) => (input.disabled = true));
+    });
+
+    submitBtn.hidden = true;
+    resultEl.hidden = false;
+    resultEl.textContent = `${questions.length}문제 중 ${correctCount}개 맞혔어요.`;
+
+    if (!node.completed) {
+      const completeBtn = document.createElement("button");
+      completeBtn.type = "button";
+      completeBtn.className = "curriculum-action-btn curriculum-action-btn-done";
+      completeBtn.textContent = "학습 완료로 표시";
+      completeBtn.addEventListener("click", async () => {
+        completeBtn.disabled = true;
+        try {
+          await postJSON(`/api/curriculum/${context.curriculumId}/nodes/${node.id}/complete`, {
+            completed: true,
+          });
+          node.completed = true;
+          if (nodeGroupEl) nodeGroupEl.classList.add("curriculum-node-completed");
+          if (context.refreshProgress) context.refreshProgress();
+          if (context.refreshNextUp) context.refreshNextUp();
+          completeBtn.textContent = "✓ 완료 처리됨";
+        } catch (err) {
+          completeBtn.disabled = false;
+          alert(err.message || "완료 처리에 실패했어요.");
+        }
+      });
+      resultEl.after(completeBtn);
+    }
+  });
+
+  container.append(form, submitBtn, resultEl);
 }
 
 const TARGET_TYPE_ICON = { paper: "📄", keyword: "🧭" };
