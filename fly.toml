@@ -1,9 +1,9 @@
-# fly.toml app configuration file generated for bypp-thrumming-sun-3501 on 2026-09-19T05:25:53+09:00
+# fly.toml app configuration file generated for ailearning on 2026-09-19T06:48:59+09:00
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
 
-app = 'bypp-thrumming-sun-3501'
+app = 'ailearning'
 primary_region = 'nrt'
 
 [build]

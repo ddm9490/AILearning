@@ -3,6 +3,10 @@
   --surface: #ffffff;
   --surface-sunken: #f8f8fc;
   --border: #e6e7f2;
+  /* 지식 노드 맵의 간선(edge) 전용 색 — --border(카드 테두리용, 아주 옅음)를 그대로
+     쓰면 선이 거의 안 보여서 그래프 전체가 흐리멍덩해 보였다. 카드 테두리보다는
+     또렷하지만 --text-muted보다는 차분한, 그래프 전용 중간 톤. */
+  --edge-color: #c3c6dc;
   --text: #14141f;
   --text-muted: #6b6d80;
   --accent: #4f46e5;

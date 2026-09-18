@@ -308,7 +308,7 @@ function buildTagRow(keywords) {
   sorted.forEach((kw) => {
     const tag = document.createElement("span");
     tag.className = kw.tier === null || kw.tier === undefined ? "tag tag-neutral" : `tag tier-${kw.tier}`;
-    tag.textContent = `#${kw.name}`;
+    tag.textContent = `# ${kw.name}`;
     tag.title = kw.tier_name ?? "";
     row.appendChild(tag);
   });
