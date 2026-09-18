@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AI 논문 추천</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="page">
+    <header class="hero">
+      <h1>AI 논문 추천</h1>
+      <p class="hero-sub">관심 분야를 입력하면 AI가 검색 키워드를 뽑고, arXiv에서 찾은 논문 중 관심사에 맞는 것을 골라 핵심 키워드와 함께 보여드려요.</p>
+    </header>
+
+    <main>
+      <section class="panel search-panel">
+        <form id="search-form">
+          <div class="field">
+            <label for="interest-input">관심 분야</label>
+            <input
+              id="interest-input"
+              type="text"
+              placeholder="예: 로봇 제어를 강화학습으로 배우고 싶어요"
+              autocomplete="off"
+            />
+            <div class="chip-row" id="topic-chips" aria-label="관심 키워드 선택 (여러 개 선택 가능)"></div>
+          </div>
+
+          <div class="field">
+            <label for="count-input">추천받을 논문 개수</label>
+            <input id="count-input" type="number" min="3" max="15" value="8" />
+          </div>
+
+          <button type="submit" class="submit-btn" id="submit-btn">AI 추천받기</button>
+        </form>
+      </section>
+
+      <section class="panel results-panel">
+        <div class="results-header">
+          <h2>추천 결과</h2>
+          <span id="results-count" class="results-count"></span>
+        </div>
+        <div id="search-keywords-banner" class="search-keywords-banner" style="display: none;"></div>
+        <div id="tier-legend" class="legend" aria-label="키워드 난이도(추상화 단계) 범례"></div>
+        <div id="results-empty" class="empty-state">
+          관심 분야를 입력하고 <strong>AI 추천받기</strong>를 눌러보세요.
+        </div>
+        <div id="results-list" class="results-list"></div>
+      </section>
+    </main>
+
+    <footer class="page-footer">
+      <p>관심사를 AI(Gemini)가 검색 키워드로 정제하고, arXiv에서 찾은 논문 중 AI가 추천 논문을 골라요.</p>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
