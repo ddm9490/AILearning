@@ -160,19 +160,16 @@ function buildPaperCard(paper) {
   summary.textContent = paper.summary;
 
   card.append(top, meta, summary);
+  if (paper.prerequisites && paper.prerequisites.length) {
+    card.appendChild(buildKeywordGroup("읽기 전 필요한 선수 지식", paper.prerequisites));
+  }
   card.appendChild(buildKeywordGroup("AI 추천 키워드", paper.keywords));
+  card.appendChild(buildRoadmapSection(paper));
 
   return card;
 }
 
-function buildKeywordGroup(label, keywords) {
-  const group = document.createElement("div");
-  group.className = "keyword-group";
-
-  const labelEl = document.createElement("div");
-  labelEl.className = "keyword-group-label";
-  labelEl.textContent = label;
-
+function buildTagRow(keywords) {
   const row = document.createElement("div");
   row.className = "tag-row";
 
@@ -184,9 +181,107 @@ function buildKeywordGroup(label, keywords) {
     tag.title = kw.tier_name ?? "";
     row.appendChild(tag);
   });
+  return row;
+}
 
-  group.append(labelEl, row);
+function buildKeywordGroup(label, keywords) {
+  const group = document.createElement("div");
+  group.className = "keyword-group";
+
+  const labelEl = document.createElement("div");
+  labelEl.className = "keyword-group-label";
+  labelEl.textContent = label;
+
+  group.append(labelEl, buildTagRow(keywords));
   return group;
+}
+
+function buildRoadmapSection(paper) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "roadmap-section";
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "roadmap-btn";
+  button.textContent = "이 논문 학습 로드맵 만들기";
+
+  const content = document.createElement("div");
+  content.className = "roadmap-content";
+  content.style.display = "none";
+
+  let loaded = false;
+
+  button.addEventListener("click", async () => {
+    if (content.style.display !== "none") {
+      content.style.display = "none";
+      return;
+    }
+    content.style.display = "block";
+    if (loaded) return;
+
+    button.disabled = true;
+    const originalText = button.textContent;
+    button.textContent = "AI가 PDF를 읽는 중... (최대 1~2분 걸려요)";
+    content.innerHTML = "";
+
+    try {
+      const data = await postJSON("/api/roadmap", {
+        title: paper.title,
+        summary: paper.summary,
+        pdf_url: paper.pdf_url,
+        interest: interestInput.value.trim(),
+      });
+      renderRoadmapSteps(content, data.steps);
+      loaded = true;
+    } catch (err) {
+      const errorMsg = document.createElement("p");
+      errorMsg.className = "roadmap-error";
+      errorMsg.textContent = err.message || "학습 로드맵을 만들지 못했어요.";
+      content.appendChild(errorMsg);
+    } finally {
+      button.disabled = false;
+      button.textContent = originalText;
+    }
+  });
+
+  wrapper.append(button, content);
+  return wrapper;
+}
+
+function renderRoadmapSteps(container, steps) {
+  container.innerHTML = "";
+
+  if (!steps || !steps.length) {
+    const empty = document.createElement("p");
+    empty.className = "roadmap-error";
+    empty.textContent = "학습 로드맵을 만들지 못했어요.";
+    container.appendChild(empty);
+    return;
+  }
+
+  const list = document.createElement("ol");
+  list.className = "roadmap-steps";
+
+  steps.forEach((step) => {
+    const li = document.createElement("li");
+    li.className = "roadmap-step";
+
+    const title = document.createElement("div");
+    title.className = "roadmap-step-title";
+    title.textContent = step.title;
+
+    const desc = document.createElement("p");
+    desc.className = "roadmap-step-desc";
+    desc.textContent = step.description;
+
+    li.append(title, desc);
+    if (step.concepts && step.concepts.length) {
+      li.appendChild(buildTagRow(step.concepts));
+    }
+    list.appendChild(li);
+  });
+
+  container.appendChild(list);
 }
 
 function setLoading(isLoading) {
