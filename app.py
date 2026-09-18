@@ -1,4 +1,6 @@
-from flask import Flask, jsonify, request
+import uuid
+
+from flask import Flask, g, jsonify, request
 
 import arxiv_service
 import context_providers
@@ -17,6 +19,33 @@ DEFAULT_COUNT = 4
 CANDIDATE_POOL_SIZE = 20
 KNOWLEDGE_BASE_HITS_LIMIT = 30
 TOTAL_SEARCH_KEYWORDS = 5
+
+# 로그인이 없는 앱이라, 브라우저별로 발급하는 익명 랜덤 쿠키 하나로 "누구 커리큘럼인지"를
+# 구분한다. 서버를 하나 켜두고 여러 명이 같이 쓰는 배포 환경(해커톤 등)에서, 이게 없으면
+# curriculum_store가 완전히 공유 저장소라 다른 사람이 만든 커리큘럼/진행 상황이 전부
+# 보이고 조작까지 가능했다. Flask session(서명 쿠키)을 안 쓴 이유: 그러려면 SECRET_KEY를
+# 안정적으로 관리해야 하는데(재시작마다 바뀌면 로그인 풀림), 여긴 민감정보가 아니라 그냥
+# "이 브라우저"를 구분하는 용도라 서명 없는 랜덤 쿠키로 충분하다.
+OWNER_COOKIE_NAME = "bypp_uid"
+OWNER_COOKIE_MAX_AGE = 60 * 60 * 24 * 180  # 180일
+
+
+def _get_owner_id():
+    owner_id = request.cookies.get(OWNER_COOKIE_NAME)
+    if not owner_id:
+        owner_id = uuid.uuid4().hex
+        g._new_owner_id = owner_id  # after_request에서 이 값이 있으면 쿠키로 내려보낸다
+    return owner_id
+
+
+@app.after_request
+def _set_owner_cookie(response):
+    new_owner_id = getattr(g, "_new_owner_id", None)
+    if new_owner_id:
+        response.set_cookie(
+            OWNER_COOKIE_NAME, new_owner_id, max_age=OWNER_COOKIE_MAX_AGE, httponly=True, samesite="Lax"
+        )
+    return response
 
 
 def _clamp_recommend_count(raw_count):
@@ -159,7 +188,7 @@ def curriculum():
 
     # 커리큘럼은 더 이상 일회성이 아니다 — 생성되는 즉시 저장해서 "내 커리큘럼" 탭에서
     # 다시 찾아볼 수 있고, 노드별 학습 완료 상태/AI 추가 설명을 나중에도 이어서 쓸 수 있다.
-    curriculum_id = curriculum_store.save_curriculum(target_label, target_type, result)
+    curriculum_id = curriculum_store.save_curriculum(target_label, target_type, result, _get_owner_id())
     result["id"] = curriculum_id
     for node in result["nodes"]:
         node["completed"] = False
@@ -171,12 +200,12 @@ def curriculum():
 
 @app.get("/api/curricula")
 def list_curricula():
-    return jsonify(curriculum_store.list_curricula())
+    return jsonify(curriculum_store.list_curricula(_get_owner_id()))
 
 
 @app.get("/api/curriculum/<curriculum_id>")
 def get_curriculum(curriculum_id):
-    record = curriculum_store.get_curriculum(curriculum_id)
+    record = curriculum_store.get_curriculum(curriculum_id, _get_owner_id())
     if not record:
         return jsonify({"error": "커리큘럼을 찾을 수 없어요."}), 404
     return jsonify(record)
@@ -184,7 +213,7 @@ def get_curriculum(curriculum_id):
 
 @app.delete("/api/curriculum/<curriculum_id>")
 def delete_curriculum(curriculum_id):
-    curriculum_store.delete_curriculum(curriculum_id)
+    curriculum_store.delete_curriculum(curriculum_id, _get_owner_id())
     return jsonify({"deleted": curriculum_id})
 
 
@@ -194,7 +223,7 @@ def set_node_completion(curriculum_id, node_id):
     body = request.get_json(silent=True) or {}
     completed = bool(body.get("completed", True))
 
-    record = curriculum_store.get_curriculum(curriculum_id)
+    record = curriculum_store.get_curriculum(curriculum_id, _get_owner_id())
     if not record:
         return jsonify({"error": "커리큘럼을 찾을 수 없어요."}), 404
     if not any(n["id"] == node_id for n in record["nodes"]):
@@ -219,7 +248,7 @@ def _gather_node_rag_context(node_title):
 @app.post("/api/curriculum/<curriculum_id>/nodes/<node_id>/explain")
 def explain_curriculum_node(curriculum_id, node_id):
     """"더 자세히 설명해줘" 버튼. 이미 생성된 설명이 있으면 재생성하지 않고 그대로 돌려준다."""
-    record = curriculum_store.get_curriculum(curriculum_id)
+    record = curriculum_store.get_curriculum(curriculum_id, _get_owner_id())
     if not record:
         return jsonify({"error": "커리큘럼을 찾을 수 없어요."}), 404
 
@@ -253,7 +282,7 @@ def explain_curriculum_node(curriculum_id, node_id):
 def quiz_curriculum_node(curriculum_id, node_id):
     """"이해도 확인 퀴즈" 버튼. 이미 생성된 퀴즈가 있으면 재생성하지 않고 그대로 돌려준다
     (문제가 계속 바뀌면 재시도 비교가 안 되기도 하고, quota도 아낀다)."""
-    record = curriculum_store.get_curriculum(curriculum_id)
+    record = curriculum_store.get_curriculum(curriculum_id, _get_owner_id())
     if not record:
         return jsonify({"error": "커리큘럼을 찾을 수 없어요."}), 404
 

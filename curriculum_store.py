@@ -27,7 +27,8 @@ CREATE TABLE IF NOT EXISTS curricula (
     target_label TEXT NOT NULL,
     target_type TEXT NOT NULL,
     created_at REAL NOT NULL,
-    payload TEXT NOT NULL
+    payload TEXT NOT NULL,
+    owner_id TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS node_completions (
@@ -70,20 +71,29 @@ def init_db():
     conn = _connect()
     try:
         conn.executescript(_SCHEMA)
+        # 이미 만들어진 데이터베이스(예전 스키마)에도 owner_id를 추가한다 —
+        # CREATE TABLE IF NOT EXISTS는 이미 있는 테이블의 컬럼을 바꿔주지 않아서
+        # 별도로 ALTER TABLE이 필요하다. 기존 행(주인이 없던 커리큘럼)은 빈 문자열로
+        # 채워지고, 그건 어떤 owner_id와도 매칭되지 않아 사실상 더 이상 아무도 못
+        # 보게 된다 — 데모 전 로컬 테스트 데이터라 손실이어도 문제없음.
+        existing_cols = {r["name"] for r in conn.execute("PRAGMA table_info(curricula)").fetchall()}
+        if "owner_id" not in existing_cols:
+            conn.execute("ALTER TABLE curricula ADD COLUMN owner_id TEXT NOT NULL DEFAULT ''")
         conn.commit()
     finally:
         conn.close()
 
 
-def save_curriculum(target_label, target_type, result):
+def save_curriculum(target_label, target_type, result, owner_id):
     """generate_curriculum()이 반환한 {target_label, used_rag, nodes, edges}를 저장하고
-    새로 만든 id를 돌려준다."""
+    새로 만든 id를 돌려준다. owner_id는 브라우저별로 발급되는 익명 식별자(쿠키) —
+    로그인이 없는 앱이라 "누가 만들었는지"를 구분하는 유일한 수단이다."""
     curriculum_id = uuid.uuid4().hex[:12]
     conn = _connect()
     try:
         conn.execute(
-            "INSERT INTO curricula (id, target_label, target_type, created_at, payload) VALUES (?, ?, ?, ?, ?)",
-            (curriculum_id, target_label, target_type, time.time(), json.dumps(result)),
+            "INSERT INTO curricula (id, target_label, target_type, created_at, payload, owner_id) VALUES (?, ?, ?, ?, ?, ?)",
+            (curriculum_id, target_label, target_type, time.time(), json.dumps(result), owner_id),
         )
         conn.commit()
     finally:
@@ -91,11 +101,16 @@ def save_curriculum(target_label, target_type, result):
     return curriculum_id
 
 
-def get_curriculum(curriculum_id):
-    """저장된 커리큘럼 + 노드별 완료 여부/AI 설명/퀴즈를 합쳐서 돌려준다. 없으면 None."""
+def get_curriculum(curriculum_id, owner_id):
+    """저장된 커리큘럼 + 노드별 완료 여부/AI 설명/퀴즈를 합쳐서 돌려준다. 없거나
+    owner_id가 다르면(다른 사람 커리큘럼) None — 목록뿐 아니라 상세 조회/노드 조작도
+    전부 이 함수를 거치므로 여기서 막으면 다른 사람 커리큘럼의 id를 알아내도 열람/조작이
+    안 된다."""
     conn = _connect()
     try:
-        row = conn.execute("SELECT * FROM curricula WHERE id = ?", (curriculum_id,)).fetchone()
+        row = conn.execute(
+            "SELECT * FROM curricula WHERE id = ? AND owner_id = ?", (curriculum_id, owner_id)
+        ).fetchone()
         if not row:
             return None
 
@@ -134,12 +149,15 @@ def get_curriculum(curriculum_id):
     }
 
 
-def list_curricula():
-    """생성 순 최신순으로, 목록 화면에 필요한 요약 정보(진행률 등)만 돌려준다."""
+def list_curricula(owner_id):
+    """이 owner_id가 만든 커리큘럼만, 생성 순 최신순으로, 목록 화면에 필요한 요약
+    정보(진행률 등)만 돌려준다."""
     conn = _connect()
     try:
         rows = conn.execute(
-            "SELECT id, target_label, target_type, created_at, payload FROM curricula ORDER BY created_at DESC"
+            "SELECT id, target_label, target_type, created_at, payload FROM curricula "
+            "WHERE owner_id = ? ORDER BY created_at DESC",
+            (owner_id,),
         ).fetchall()
         summaries = []
         for row in rows:
@@ -206,10 +224,10 @@ def save_node_quiz(curriculum_id, node_id, quiz):
         conn.close()
 
 
-def delete_curriculum(curriculum_id):
+def delete_curriculum(curriculum_id, owner_id):
     conn = _connect()
     try:
-        conn.execute("DELETE FROM curricula WHERE id = ?", (curriculum_id,))
+        conn.execute("DELETE FROM curricula WHERE id = ? AND owner_id = ?", (curriculum_id, owner_id))
         conn.commit()
     finally:
         conn.close()
