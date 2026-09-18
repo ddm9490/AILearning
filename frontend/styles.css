@@ -55,6 +55,13 @@
   --tier-5-text: #b91c1c;
   --tier-6-bg: #fdf2f8;
   --tier-6-text: #9d174d;
+
+  /* "다음 학습 추천" 전용 색 — tier 액센트(카테고리)나 --accent(선택/타겟 강조)와
+     겹치면 "이 점선 테두리가 tier인지 next-up인지 타겟인지" 헷갈린다. 7개 tier
+     색상 중 어디와도 겹치지 않는 청록 계열을 따로 빼서, "지금 바로 공부해도 되는
+     노드"라는 상태(status)만 가리키는 색으로 예약했다. */
+  --curriculum-next-accent: #0f766e;
+  --curriculum-next-soft: #ecfdf5;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -114,6 +121,18 @@
     --tier-5-text: #fca5a5;
     --tier-6-bg: #401b30;
     --tier-6-text: #f5a7cd;
+
+    /* 라이트 모드와 같은 이유(위 :root 참고) — tier/accent 색과 안 겹치는 청록.
+       다크 배경에서도 눈에 띄게 --tier-1-text(연두빛 초록)보다 살짝 더 파란
+       사이언 쪽으로 잡았다. */
+    --curriculum-next-accent: #2dd4bf;
+    --curriculum-next-soft: #10302c;
+
+    /* 지식 노드 맵의 간선(edge) 전용 색 — 라이트 모드의 --edge-color(#c3c6dc)를
+       다크에서 그대로 --border로 대체하면(예전 상태) 배경(#191922)과 거의 안
+       구분돼서 그래프 전체가 흐리멍덩했다. --border보다는 밝고 --text-muted보다는
+       차분한 중간 톤으로 다크 전용 값을 새로 잡았다. */
+    --edge-color: #54546e;
   }
 }
 
@@ -665,7 +684,7 @@ body {
   fill: var(--surface);
   stroke: var(--border);
   stroke-width: 1.5;
-  transition: stroke 0.15s ease;
+  transition: stroke 0.15s ease, filter 0.15s ease;
 }
 
 .curriculum-node:hover rect,
@@ -673,43 +692,79 @@ body {
   stroke: var(--accent);
 }
 
+/* tier를 카드 배경 전체가 아니라 왼쪽의 얇은 액센트 바 하나로만 표시한다 — 예전엔
+   .tier-N rect가 배경 전체를 tier색으로 칠해서, 노드마다 색이 서로 경쟁하고
+   그래프가 산만해 보였다(브라운/그린/퍼플이 나란히 붙어있는 식). 카드 표면은
+   전부 같은 중립색(위 .curriculum-node rect)으로 통일하고, tier는 이 바 색상
+   하나로만 신호를 주면 훨씬 차분하면서도 "무슨 tier인지"는 여전히 구분된다.
+   더 진하고 채도 높은 *-text 변수를 쓰는 이유: *-bg는 넓은 면적용 파스텔이라
+   4px짜리 얇은 바에 쓰면 거의 안 보인다. */
+.curriculum-node-accent {
+  fill: var(--border);
+}
+.curriculum-node.tier-0 .curriculum-node-accent { fill: var(--tier-0-text); }
+.curriculum-node.tier-1 .curriculum-node-accent { fill: var(--tier-1-text); }
+.curriculum-node.tier-2 .curriculum-node-accent { fill: var(--tier-2-text); }
+.curriculum-node.tier-3 .curriculum-node-accent { fill: var(--tier-3-text); }
+.curriculum-node.tier-4 .curriculum-node-accent { fill: var(--tier-4-text); }
+.curriculum-node.tier-5 .curriculum-node-accent { fill: var(--tier-5-text); }
+.curriculum-node.tier-6 .curriculum-node-accent { fill: var(--tier-6-text); }
+
 .curriculum-node-body {
   width: 100%;
   height: 100%;
   box-sizing: border-box;
-  padding: 10px 12px;
+  /* 왼쪽 여백을 더 준 건 .curriculum-node-accent 바(x=4, width=4)와 텍스트가
+     겹치지 않게 하기 위해서다. */
+  padding: 10px 14px 10px 18px;
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
   justify-content: center;
+  gap: 3px;
   text-align: center;
   font-size: 0.82rem;
   font-weight: 600;
   color: var(--text);
-  overflow: hidden;
   line-height: 1.3;
+  /* 높이는 이제 app.js의 measureNodeHeight()가 실제 줄바꿈을 재서 노드마다 다르게
+     잡아준다(예전 고정 76px는 긴 타겟 노드 타이틀이 잘리는 원인이었다) — 그래도
+     예상 못 한 극단적으로 긴 제목에 대비해 overflow는 안전장치로 남겨둔다. */
+  overflow: hidden;
+}
+
+.curriculum-node-title {
+  display: block;
+}
+
+/* 타겟 노드 안에서만 붙는 작은 라벨 — "이게 최종 목표"라는 걸 tier 색이나 굵기
+   차이보다 훨씬 명확하게 알려준다. */
+.curriculum-node-eyebrow {
+  display: block;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--accent);
 }
 
 .curriculum-node-target rect {
   stroke: var(--accent);
   stroke-width: 2.5;
+  /* 타겟 노드는 카드 배경이 다른 노드와 같은 중립색이라, 은은한 글로우로 시각적
+     무게를 더 준다 — 이미 정의돼 있던 --accent-shadow(버튼 그림자용)를 재사용. */
+  filter: drop-shadow(0 0 10px var(--accent-shadow));
 }
 
-.curriculum-node-target .curriculum-node-body {
+.curriculum-node-target .curriculum-node-title {
   font-weight: 800;
 }
 
-.curriculum-node.tier-0 rect { fill: var(--tier-0-bg); }
-.curriculum-node.tier-1 rect { fill: var(--tier-1-bg); }
-.curriculum-node.tier-2 rect { fill: var(--tier-2-bg); }
-.curriculum-node.tier-3 rect { fill: var(--tier-3-bg); }
-.curriculum-node.tier-4 rect { fill: var(--tier-4-bg); }
-.curriculum-node.tier-5 rect { fill: var(--tier-5-bg); }
-.curriculum-node.tier-6 rect { fill: var(--tier-6-bg); }
-
 .curriculum-edge {
   fill: none;
-  stroke: var(--border);
-  stroke-width: 1.5;
+  stroke: var(--edge-color);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
   transition: stroke 0.15s ease, stroke-width 0.15s ease;
 }
 
@@ -719,7 +774,7 @@ body {
 }
 
 .curriculum-arrow-head {
-  fill: var(--border);
+  fill: var(--edge-color);
 }
 
 .curriculum-detail {
@@ -921,9 +976,12 @@ body {
   stroke: #16a34a;
 }
 
-/* "다음 학습 추천" */
+/* "다음 학습 추천" — tier 액센트/타겟 강조와 전부 --accent 보라색을 같이 쓰면
+   "이 점선이 tier 표시야, next-up이야, 포커스야?"가 구분이 안 된다. 상태
+   표시(지금 바로 공부해도 되는 노드)라는 뜻이 분명하도록 전용 청록색
+   (--curriculum-next-accent)을 따로 예약해서 썼다. */
 .curriculum-node-next rect {
-  stroke: var(--accent);
+  stroke: var(--curriculum-next-accent);
   stroke-width: 2.5;
   stroke-dasharray: 5 3;
 }
@@ -939,15 +997,15 @@ body {
 .curriculum-nextup-label {
   font-size: 0.75rem;
   font-weight: 700;
-  color: var(--accent);
+  color: var(--curriculum-next-accent);
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
 
 .curriculum-nextup-chip {
-  border: 1.5px dashed var(--accent);
-  background: var(--accent-soft);
-  color: var(--accent);
+  border: 1.5px dashed var(--curriculum-next-accent);
+  background: var(--curriculum-next-soft);
+  color: var(--curriculum-next-accent);
   font-family: inherit;
   font-size: 0.78rem;
   font-weight: 600;

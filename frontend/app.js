@@ -436,7 +436,9 @@ function buildCurriculumPreviewSaveBar(data) {
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const GRAPH_NODE_WIDTH = 190;
-const GRAPH_NODE_HEIGHT = 76;
+const GRAPH_TARGET_NODE_WIDTH = 220;
+const GRAPH_NODE_MIN_HEIGHT = 72;
+const GRAPH_NODE_MAX_HEIGHT = 168;
 const GRAPH_COL_GAP = 90;
 const GRAPH_ROW_GAP = 22;
 const GRAPH_PADDING = 24;
@@ -445,6 +447,53 @@ function createSvgEl(tag, attrs) {
   const el = document.createElementNS(SVG_NS, tag);
   Object.entries(attrs || {}).forEach(([key, value]) => el.setAttribute(key, value));
   return el;
+}
+
+function nodeBoxWidth(node) {
+  return node.is_target ? GRAPH_TARGET_NODE_WIDTH : GRAPH_NODE_WIDTH;
+}
+
+// 실제 렌더링(foreignObject 안)과 높이 측정(measureNodeHeight)이 항상 같은 DOM
+// 구조를 쓰게 하나로 합쳐뒀다 — 둘이 따로 놀면(예: 측정할 땐 타이틀만 재고 실제로는
+// "목표" 라벨까지 얹는 식) 측정값이 실제 렌더링보다 작아져서 다시 텍스트가 잘린다.
+function buildNodeBodyEl(node) {
+  const body = document.createElement("div");
+  body.className = "curriculum-node-body";
+  if (node.is_target) {
+    const eyebrow = document.createElement("span");
+    eyebrow.className = "curriculum-node-eyebrow";
+    eyebrow.textContent = "🎯 학습 목표";
+    body.appendChild(eyebrow);
+  }
+  const title = document.createElement("span");
+  title.className = "curriculum-node-title";
+  title.textContent = node.title;
+  body.appendChild(title);
+  return body;
+}
+
+// 타이틀 길이에 따라 노드 높이가 다른데(짧은 한 줄 vs 긴 두세 줄), 고정 높이(예전
+// 76px)를 쓰면 긴 타이틀(특히 타겟 노드)이 overflow:hidden에 잘려버렸다. 실제
+// .curriculum-node-body와 동일한 클래스/폭으로 화면 밖에 숨겨서 렌더링한 뒤 실제
+// 줄바꿈 높이를 재는 게, 글자 수만으로 줄 수를 추정하는 것보다 훨씬 정확하다
+// (한글/영어가 섞여 있어 글자당 폭이 들쭉날쭉하기 때문).
+let _measureHost = null;
+function measureNodeHeight(node, width) {
+  if (!_measureHost) {
+    _measureHost = document.createElement("div");
+    _measureHost.style.cssText = "position:fixed; left:-9999px; top:0; visibility:hidden; pointer-events:none;";
+    document.body.appendChild(_measureHost);
+  }
+  const wrapper = document.createElement("div");
+  if (node.is_target) wrapper.className = "curriculum-node-target";
+  const body = buildNodeBodyEl(node);
+  body.style.width = `${width}px`;
+  body.style.height = "auto";
+  wrapper.appendChild(body);
+  _measureHost.appendChild(wrapper);
+  const measured = body.scrollHeight;
+  _measureHost.removeChild(wrapper);
+  return Math.min(GRAPH_NODE_MAX_HEIGHT, Math.max(GRAPH_NODE_MIN_HEIGHT, measured));
 }
 
 function layoutCurriculumGraph(nodes) {
@@ -457,29 +506,40 @@ function layoutCurriculumGraph(nodes) {
 
   const layers = [...byLayer.keys()].sort((a, b) => a - b);
   const positions = new Map();
-  let maxRows = 0;
+  const colWidths = [];
+  let maxColHeight = 0;
 
   layers.forEach((layer, colIndex) => {
     const colNodes = byLayer.get(layer);
-    maxRows = Math.max(maxRows, colNodes.length);
-    colNodes.forEach((node, rowIndex) => {
-      positions.set(node.id, {
-        x: GRAPH_PADDING + colIndex * (GRAPH_NODE_WIDTH + GRAPH_COL_GAP),
-        y: GRAPH_PADDING + rowIndex * (GRAPH_NODE_HEIGHT + GRAPH_ROW_GAP),
-      });
+    const colWidth = Math.max(...colNodes.map(nodeBoxWidth));
+    colWidths.push(colWidth);
+    const colX = GRAPH_PADDING + colWidths.slice(0, colIndex).reduce((sum, w) => sum + w + GRAPH_COL_GAP, 0);
+
+    let y = GRAPH_PADDING;
+    colNodes.forEach((node) => {
+      const nodeWidth = nodeBoxWidth(node);
+      const nodeHeight = measureNodeHeight(node, nodeWidth);
+      positions.set(node.id, { x: colX, y, width: nodeWidth, height: nodeHeight });
+      y += nodeHeight + GRAPH_ROW_GAP;
     });
+    maxColHeight = Math.max(maxColHeight, y - GRAPH_ROW_GAP);
   });
 
-  const width = GRAPH_PADDING * 2 + layers.length * GRAPH_NODE_WIDTH + Math.max(0, layers.length - 1) * GRAPH_COL_GAP;
-  const height = GRAPH_PADDING * 2 + maxRows * GRAPH_NODE_HEIGHT + Math.max(0, maxRows - 1) * GRAPH_ROW_GAP;
-  return { positions, width: Math.max(width, GRAPH_NODE_WIDTH + GRAPH_PADDING * 2), height: Math.max(height, GRAPH_NODE_HEIGHT + GRAPH_PADDING * 2) };
+  const totalColsWidth = colWidths.reduce((sum, w) => sum + w, 0) + Math.max(0, colWidths.length - 1) * GRAPH_COL_GAP;
+  const width = GRAPH_PADDING * 2 + totalColsWidth;
+  const height = GRAPH_PADDING * 2 + maxColHeight;
+  return {
+    positions,
+    width: Math.max(width, GRAPH_NODE_WIDTH + GRAPH_PADDING * 2),
+    height: Math.max(height, GRAPH_NODE_MIN_HEIGHT + GRAPH_PADDING * 2),
+  };
 }
 
 function curriculumEdgePath(from, to) {
-  const x1 = from.x + GRAPH_NODE_WIDTH;
-  const y1 = from.y + GRAPH_NODE_HEIGHT / 2;
+  const x1 = from.x + from.width;
+  const y1 = from.y + from.height / 2;
   const x2 = to.x;
-  const y2 = to.y + GRAPH_NODE_HEIGHT / 2;
+  const y2 = to.y + to.height / 2;
   const curve = Math.max(40, (x2 - x1) / 2);
   return `M ${x1} ${y1} C ${x1 + curve} ${y1}, ${x2 - curve} ${y2}, ${x2} ${y2}`;
 }
@@ -629,21 +689,33 @@ function renderCurriculumGraph(container, data) {
       tabindex: "0",
     });
 
-    g.appendChild(createSvgEl("rect", { width: GRAPH_NODE_WIDTH, height: GRAPH_NODE_HEIGHT, rx: 12 }));
+    g.appendChild(createSvgEl("rect", { width: pos.width, height: pos.height, rx: 12 }));
 
-    const foreignObject = createSvgEl("foreignObject", { width: GRAPH_NODE_WIDTH, height: GRAPH_NODE_HEIGHT });
-    const body = document.createElement("div");
-    body.className = "curriculum-node-body";
-    body.textContent = node.title;
-    foreignObject.appendChild(body);
+    // tier를 카드 배경 전체가 아니라 왼쪽 얇은 액센트 바 하나로만 표시한다 — 배경을
+    // 통째로 칠하면(예전 방식) 노드마다 색이 서로 경쟁해서 그래프 전체가 산만해
+    // 보였다. 카드는 전부 같은 중립 표면(rect fill)을 쓰고, tier 색은 이 바 하나에만
+    // 실어서 "무슨 tier인지"는 여전히 한눈에 구분되지만 화면은 훨씬 차분해진다.
+    g.appendChild(
+      createSvgEl("rect", {
+        x: 4,
+        y: 8,
+        width: 4,
+        height: Math.max(0, pos.height - 16),
+        rx: 2,
+        class: "curriculum-node-accent",
+      })
+    );
+
+    const foreignObject = createSvgEl("foreignObject", { width: pos.width, height: pos.height });
+    foreignObject.appendChild(buildNodeBodyEl(node));
     g.appendChild(foreignObject);
 
     // 완료 체크 배지: 항상 DOM엔 있고, .curriculum-node-completed일 때만 CSS로 보여준다
     // (완료 토글 때마다 새로 만들지 않고 클래스만 바꾸면 되도록).
     const badge = createSvgEl("g", { class: "curriculum-node-badge" });
-    badge.appendChild(createSvgEl("circle", { cx: GRAPH_NODE_WIDTH - 12, cy: 12, r: 10 }));
+    badge.appendChild(createSvgEl("circle", { cx: pos.width - 12, cy: 12, r: 10 }));
     const check = createSvgEl("path", {
-      d: `M ${GRAPH_NODE_WIDTH - 17} 12 l 4 4 l 7 -8`,
+      d: `M ${pos.width - 17} 12 l 4 4 l 7 -8`,
       class: "curriculum-node-check",
     });
     badge.appendChild(check);
