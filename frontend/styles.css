@@ -527,6 +527,7 @@ body {
 
 .curriculum-node {
   cursor: pointer;
+  outline: none;
 }
 
 .curriculum-node rect {
@@ -539,7 +540,6 @@ body {
 .curriculum-node:hover rect,
 .curriculum-node:focus rect {
   stroke: var(--accent);
-  outline: none;
 }
 
 .curriculum-node-body {
