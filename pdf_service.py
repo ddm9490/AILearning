@@ -17,7 +17,7 @@ import pymupdf
 import requests
 
 MAX_PDF_BYTES = 25 * 1024 * 1024
-DOWNLOAD_TIMEOUT_SECONDS = 30
+DOWNLOAD_TIMEOUT_SECONDS = 60
 # 로컬 임베딩 모델(embedding_service.MODEL_NAME, 512 토큰 한도)에 맞춘 값. 실측해보니
 # 논문 본문 영어 텍스트는 단어당 평균 ~1.5~1.6 토큰으로 토큰화된다(300단어 -> 483토큰,
 # 350단어 -> 549토큰으로 이미 512를 넘김). 900단어였던 예전 값은 Gemini 임베딩 기준으로
@@ -57,7 +57,9 @@ def download_pdf(pdf_url):
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         }
         response = requests.get(pdf_url, headers=headers, timeout=DOWNLOAD_TIMEOUT_SECONDS, stream=True)
+        print("sucess")
         response.raise_for_status()
+        
     except requests.RequestException as exc:
         raise PdfDownloadError(f"PDF를 받아오지 못했어요: {exc}") from exc
 
