@@ -628,6 +628,29 @@ body {
   color: var(--text-muted);
 }
 
+/* 미리보기 저장 바 바로 다음에 RAG 배너가 오는 경우(논문 카드에서 "커리큘럼에
+   추가"를 눌렀을 때) — 각진 전체 폭 바 아래에 작은 알약이 따로 붕 떠 있는 것처럼
+   보였다. 배경색(--accent-soft)은 이미 같으니, 테두리를 이어 붙여서 위/아래 두
+   줄짜리 카드 하나처럼 보이게 합친다. RAG 배너가 이 바 없이 단독으로 뜨는 경우
+   (저장된 커리큘럼, 독립 "커리큘럼" 탭)는 원래대로 작은 알약 모양을 그대로 쓴다. */
+.curriculum-preview-bar:has(+ .curriculum-rag-banner) {
+  margin-bottom: 0;
+  border-bottom: none;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.curriculum-preview-bar + .curriculum-rag-banner {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0 0 12px;
+  padding: 8px 14px;
+  border: 1px dashed var(--border);
+  border-top: 1px dashed color-mix(in srgb, var(--border) 60%, transparent);
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+}
+
 .curriculum-panel .panel-sub {
   color: var(--text-muted);
   font-size: 0.88rem;
