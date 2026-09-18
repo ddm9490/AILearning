@@ -32,8 +32,7 @@ TIER_DEFINITIONS_TEXT = "\n".join(f"{t['id']}: {t['name']} — {t['description']
 
 # quota가 모델별로 따로 관리되기 때문에, 주 모델이 일일 한도를 다 쓰면 순서대로
 # 다음 모델로 넘어간다. gemini-3.1-flash-lite는 성능은 낮지만 별도 quota를 쓴다.
-MODELS = ["gemini-3.1-flash-lite"]
-# "gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash", "gemini-3-flash", "gemini-3.5-flash-lite", 실제 배포떄 쓸 모델의 토큰을 아끼기 위해
+MODELS = ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite"]
 RETRY_ATTEMPTS = 4
 RETRY_DELAY_SECONDS = 2
 DEFAULT_RATE_LIMIT_DELAY = 20
