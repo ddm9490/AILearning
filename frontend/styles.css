@@ -44,7 +44,10 @@
     --surface-sunken: #191922;
     --border: #2c2c3a;
     --text: #f1f1f6;
-    --text-muted: #a0a1b5;
+    /* 원래 #a0a1b5는 파랑-보라 쪽으로 살짝 치우쳐 있어서 accent/tier 색상들과
+       한데 뭉쳐 보였다 — 색상 없는 중립 회색으로 바꿔서 "흐린 본문 텍스트"라는
+       신호가 accent색 요소들과 섞이지 않게 했다. */
+    --text-muted: #96969f;
     --accent: #8b83f6;
     --accent-hover: #a39cf8;
     --accent-soft: #23213f;
@@ -57,14 +60,18 @@
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 6px rgba(0, 0, 0, 0.2);
     --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.3), 0 12px 30px rgba(0, 0, 0, 0.4);
 
-    --tier-0-bg: #23234a;
-    --tier-0-text: #a5b4fc;
+    /* tier-0/tier-3는 원래 각각 인디고(#a5b4fc)/바이올렛(#c4b5fd)이라 --accent(#8b83f6)와
+       색상대가 거의 겹쳤다 — 어두운 배경 위에서 "이건 버튼/포커스", "이건 tier 태그"를
+       색만으로 구분하기 어려웠던 원인. tier-0은 accent보다 훨씬 채도 낮은 슬레이트blue로,
+       tier-3은 마젠타 쪽으로 옮겨서 accent 및 서로와 뚜렷이 구분되게 했다. */
+    --tier-0-bg: #1e2438;
+    --tier-0-text: #8fa8d6;
     --tier-1-bg: #123a2c;
     --tier-1-text: #6ee7b7;
     --tier-2-bg: #1a2b4d;
     --tier-2-text: #93c5fd;
-    --tier-3-bg: #2c2150;
-    --tier-3-text: #c4b5fd;
+    --tier-3-bg: #3a1a3d;
+    --tier-3-text: #e0a3f0;
     --tier-4-bg: #3a2a12;
     --tier-4-text: #fbbf7c;
     --tier-5-bg: #401d1d;
@@ -88,28 +95,29 @@ body {
 }
 
 .page {
-  max-width: 880px;
+  max-width: 1080px;
   margin: 0 auto;
-  padding: 40px 20px 72px;
+  padding: 48px 24px 80px;
 }
 
 .hero {
   text-align: center;
-  margin-bottom: 28px;
+  margin-bottom: 36px;
 }
 
 .hero h1 {
-  font-size: 2rem;
+  font-size: 2.25rem;
   font-weight: 800;
   letter-spacing: -0.02em;
-  margin: 0 0 10px;
+  margin: 0 0 12px;
 }
 
 .hero-sub {
   color: var(--text-muted);
   margin: 0 auto;
-  max-width: 46em;
-  font-size: 0.95rem;
+  max-width: 42em;
+  font-size: 0.98rem;
+  line-height: 1.6;
 }
 
 .tabs {
@@ -161,12 +169,12 @@ body {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 26px;
+  padding: 32px;
   box-shadow: var(--shadow-md);
 }
 
 .search-panel {
-  margin-bottom: 24px;
+  margin-bottom: 28px;
 }
 
 .field {
@@ -323,7 +331,7 @@ body {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  margin-bottom: 14px;
+  margin-bottom: 18px;
 }
 
 .results-header h2 {
@@ -348,20 +356,21 @@ body {
 
 .results-list {
   display: grid;
-  gap: 14px;
+  gap: 16px;
 }
 
 .paper-card {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  padding: 18px 20px;
+  padding: 22px 24px;
   background: var(--surface-sunken);
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
 }
 
 .paper-card:hover {
   border-color: var(--accent);
   box-shadow: var(--shadow-sm);
+  transform: translateY(-1px);
 }
 
 .paper-card-top {
@@ -411,6 +420,7 @@ body {
 .paper-summary {
   margin: 0 0 12px;
   font-size: 0.92rem;
+  line-height: 1.6;
   color: var(--text);
 }
 
@@ -522,7 +532,7 @@ body {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--surface-sunken);
-  padding: 12px;
+  padding: 20px;
 }
 
 .curriculum-node {
