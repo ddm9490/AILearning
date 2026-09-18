@@ -373,8 +373,11 @@ function buildCurriculumTrigger(target, buttonLabel) {
         save: false,
       });
       previewData = data;
-      content.appendChild(buildCurriculumPreviewSaveBar(data));
+      // renderCurriculumGraph()가 맨 앞에서 container.innerHTML을 비우기 때문에,
+      // 저장 바를 먼저 넣으면 그래프를 그리는 순간 같이 지워진다 — 그래프를 먼저
+      // 그린 뒤 저장 바를 맨 위에 꽂아야 한다.
       renderCurriculumGraph(content, data);
+      content.prepend(buildCurriculumPreviewSaveBar(data));
       button.textContent = "커리큘럼 접기";
     } catch (err) {
       const errorMsg = document.createElement("p");
