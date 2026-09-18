@@ -32,20 +32,27 @@ def _get_model():
     return _model
 
 
-# fastembed의 embed() 기본 batch_size는 256이라, 논문 한 편(최대 100~150 청크)을
-# 한 번에 넘기면 onnxruntime이 그 배치 크기에 맞춰 메모리 arena를 한 번에 키운다.
-# 게다가 pdf_service.CHUNK_WORDS=300으로 자른 실제 논문 청크는 토큰 수가 모델 한도
-# (512)에 거의 붙어 있다(실측: GPT-3 논문 138청크 평균 438토큰, 최대 512). 어텐션
-# 메모리는 시퀀스 길이 제곱에 가깝게 늘어나므로, 512에 가까운 긴 시퀀스를 큰 배치로
-# 한꺼번에 넣으면 메모리가 특히 더 폭발적으로 늘어난다 — 실측(threads=1, 같은 138청크,
-# 프로세스별로 독립 측정): batch_size=32 -> 1,463MB, batch_size=8 -> 521MB,
-# batch_size=4 -> 413MB, batch_size=2 -> 350MB, batch_size=1 -> 305MB. 이 arena는
-# onnxruntime이 프로세스 생존 기간 내내 재사용 목적으로 들고 있어서(=한 번 커지면
-# 해제 안 됨) 이후 요청에서도 메모리가 그 수준으로 유지된다. 512MB 컨테이너에 배포할
-# 때는 워커 개수보다 이게 훨씬 더 결정적인 원인이었다. Flask+google-genai+pymupdf+
-# fastembed+D2L 인덱스까지 다 로드한 상태에서 이 논문을 batch_size=4로 임베딩하면
-# 전체 RSS가 446MB까지 나와서(512MB 대비 여유 66MB뿐) 안전 마진을 더 두려고 2로
-# 낮췄다 — 청크 수십~백 개 수준에서는 배치를 더 낮춰도 체감 속도 차이가 거의 없다.
+# fastembed의 embed() 기본 batch_size는 256이라, 한 번의 onnx 실행이 (batch_size x
+# 최대 시퀀스 길이) 크기로 메모리 arena를 잡는다. pdf_service.CHUNK_WORDS=300으로 자른
+# 실제 논문 청크는 토큰 수가 모델 한도(512)에 거의 붙어 있어서(실측: GPT-3 논문 청크
+# 평균 438토큰) 큰 batch_size는 arena를 특히 크게 키운다 — 실측(threads=1, 같은 138개
+# 청크, 프로세스별 독립 측정): batch_size=32 -> 1,463MB, batch_size=8 -> 521MB,
+# batch_size=4 -> 413MB, batch_size=2 -> 350MB. 이 arena는 onnxruntime이 프로세스
+# 생존 기간 내내 재사용 목적으로 들고 있어서(한 번 커지면 해제 안 됨) 이후 요청에서도
+# 메모리가 그 수준으로 유지된다.
+#
+# **주의**: 메모리는 batch_size가 지배하지만, 소요 시간은 "총 청크 개수"가 지배한다
+# (청크 수만큼 순차적으로 forward pass가 도니까). 처음엔 batch_size만 2로 낮췄는데,
+# 138개 청크를 통째로 batch_size=2로 임베딩하면 로컬 풀코어에서도 59초가 걸려서
+# gunicorn 기본 타임아웃(30초)조차 못 버텼다. 진짜 해법은 batch_size를 더 낮추는 게
+# 아니라 `context_providers.PAPER_MAX_CHUNKS_TO_EMBED`로 애초에 임베딩할 청크 총량
+# 자체에 상한선을 두는 것이었다(논문이 아무리 길어도 40개로 캡). 총량이 40(+D2L 최대
+# 8)개로 묶이고 나면 batch_size는 다시 메모리 쪽 레버로만 쓰면 된다 — 실제
+# `context_providers.paper_pdf_provider()`로 GPT-3 논문(PDF 다운로드부터 D2L 배경
+# 발췌까지 전부 포함) 전체를 실측: batch_size=4는 491MB/23.5초, batch_size=2는
+# 389MB/25.6초로 메모리만 100MB 넘게 줄고 시간은 청크 총량이 이미 캡돼 있어서 거의
+# 그대로였다. 그래서 batch_size=2를 최종값으로 뒀다 — 캡 이전(138청크)과 달리 이제는
+# batch_size를 낮춰도 시간 손해가 거의 없다.
 EMBED_BATCH_SIZE = 2
 
 

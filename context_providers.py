@@ -28,6 +28,14 @@ CHUNKS_PER_QUERY = 4
 MAX_CHUNKS_TOTAL = 16
 KEYWORD_CANDIDATE_PAPERS = 6
 
+# paper_pdf_provider는 최종적으로 MAX_CHUNKS_TOTAL(16)개만 쓰는데, 그걸 고르려고
+# 논문 전체 청크(75페이지짜리 논문이면 130개 이상)를 전부 임베딩하고 있었다 — CPU/메모리
+# 낭비가 커서(실측: 138청크 임베딩에 59초, RSS 500MB+) 0.1 CPU/512MB 같은 배포 환경에서
+# 병목이었다. 임베딩 전에 여기서 먼저 균등 샘플링으로 잘라내면, 논문이 아무리 길어도
+# 비용이 상한선을 넘지 않는다. 앞쪽만 자르지 않고 간격을 둬서 고르는 이유: 논문 뒷부분
+# (실험 결과/한계 등)도 커리큘럼에 필요한 내용이라 서론 쪽으로 편향되면 안 되기 때문.
+PAPER_MAX_CHUNKS_TO_EMBED = 40
+
 # 교재(textbook_index)는 여러 주제를 다루는 큰 코퍼스라서, 위 ASPECT_QUERIES를 그대로
 # 쓰면 "이 라벨과 무관하게 아무 수학 얘기"를 끌어올 위험이 있다. 그래서 교재 검색은
 # 먼저 라벨 자체로 좁힌 다음(아래 쿼리들), 좁혀진 후보만 ASPECT_QUERIES로 다시 거른다.
@@ -47,6 +55,15 @@ def _textbook_chunks(label):
     return textbook_index.search(_textbook_queries(label), per_query=TEXTBOOK_CHUNKS_PER_QUERY, max_total=TEXTBOOK_MAX_CHUNKS)
 
 
+def _cap_chunks_evenly(chunks, max_chunks):
+    """chunks가 max_chunks보다 많으면, 앞쪽으로 편향되지 않게 논문 전체에 걸쳐
+    균등한 간격으로 max_chunks개만 골라낸다."""
+    if len(chunks) <= max_chunks:
+        return chunks
+    step = len(chunks) / max_chunks
+    return [chunks[int(i * step)] for i in range(max_chunks)]
+
+
 def no_rag_provider(target):
     """RAG를 아예 끈다 — LLM이 사전 지식만으로 커리큘럼을 만들게 한다."""
     return []
@@ -61,9 +78,10 @@ def paper_pdf_provider(target):
 
     pdf_stream = pdf_service.download_pdf(pdf_url)
     text = pdf_service.extract_text(pdf_stream)
+    raw_chunks = _cap_chunks_evenly(pdf_service.chunk_text(text), PAPER_MAX_CHUNKS_TO_EMBED)
     # 출처 태그를 발췌 앞에 붙여둔다 — llm_service가 description/learning_points를
     # "이 논문 원문에 따르면", "D2L 교재에서는" 처럼 구체적인 출처를 밝히며 쓸 수 있게 된다.
-    chunks = [f"[이 논문 PDF 원문] {c}" for c in pdf_service.chunk_text(text)]
+    chunks = [f"[이 논문 PDF 원문] {c}" for c in raw_chunks]
 
     title = target.get("title", "").strip()
     textbook_chunks = [f"[D2L 교재] {c}" for c in _textbook_chunks(title)] if title else []
