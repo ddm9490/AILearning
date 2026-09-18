@@ -52,7 +52,11 @@ class PdfTextExtractionError(RuntimeError):
 
 def download_pdf(pdf_url):
     try:
-        response = requests.get(pdf_url, timeout=DOWNLOAD_TIMEOUT_SECONDS, stream=True)
+        headers = {
+            # 브라우저인 것처럼 보이거나, 본인의 서비스/이메일을 명시
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
+        response = requests.get(pdf_url, headers=headers, timeout=DOWNLOAD_TIMEOUT_SECONDS, stream=True)
         response.raise_for_status()
     except requests.RequestException as exc:
         raise PdfDownloadError(f"PDF를 받아오지 못했어요: {exc}") from exc
