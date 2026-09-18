@@ -354,7 +354,11 @@ description/learning_points를 쓸 때 이 발췌 내용에 최대한 구체적�
     있다"처럼 행동 가능한(actionable) 문장으로 써줘.
   - concepts(이 노드와 관련된 핵심 키워드 1~5개)
 - concepts는 짧고 구체적으로: 기술/아키텍처/메커니즘 용어는 영어로, 수학 개념은
-  한국어로 표기해줘."""
+  한국어로 표기해줘.
+- title/description/learning_points는 **반드시 한국어 문장으로** 작성해줘. 참고 자료
+  발췌가 영어여도 그대로 옮기지 말고 한국어로 번역/설명해줘 — 그 안에 나오는 기술
+  용어(예: Self-Attention, Backpropagation)나 수식 자체는 원래 표기를 유지해도 되지만,
+  설명 문장 자체가 영어여서는 안 돼."""
 
     result = _generate_json(prompt, schema)
     if not result.get("nodes"):
@@ -400,12 +404,14 @@ def explain_concept(target_label, node_title, node_description, context_chunks, 
 
 참고 지식 베이스 (해당되면 이 표기를 우선 써줘): {known_keywords_text}
 
-위 짧은 설명보다 **훨씬 깊고 구체적인** 설명을 만들어줘 (한국어, 4~8문장 또는 여러
-짧은 단락):
+위 짧은 설명보다 **훨씬 깊고 구체적인** 설명을 만들어줘 (4~8문장 또는 여러 짧은 단락):
 - 이 개념을 실제로 이해했다고 할 수 있으려면 무엇을 알아야 하는지 구체적으로.
 - 가능하면 구체적인 예시, 수식, 비유 중 하나 이상을 포함해줘.
 - 흔히 헷갈리거나 오해하는 지점이 있다면 짚어줘.
-- 참고 자료가 있다면 그 내용을 일반론이 아니라 실제로 인용/반영해줘."""
+- 참고 자료가 있다면 그 내용을 일반론이 아니라 실제로 인용/반영해줘.
+- **반드시 한국어 문장으로만** 작성해줘. 참고 자료 발췌가 영어여도 그대로 옮기지 말고
+  한국어로 번역/설명해줘 — 기술 용어(예: Self-Attention)나 수식 표기는 원래 형태를
+  유지해도 되지만, 설명 문장 자체가 영어여서는 안 돼."""
 
     result = _generate_json(prompt, schema)
     explanation = result.get("explanation", "").strip()
@@ -479,7 +485,10 @@ def generate_quiz(target_label, node_title, node_description, context_chunks, kn
 - options는 정확히 4개, 그럴듯한 오답(흔히 헷갈리는 지점)을 포함해줘.
 - correct_index는 0부터 시작하는 정답 인덱스(0~3).
 - explanation은 정답인 이유(및 왜 다른 보기들이 틀렸는지)를 1~2문장으로.
-- 참고 자료가 있다면 그 내용을 실제로 반영한 구체적인 문제를 만들어줘."""
+- 참고 자료가 있다면 그 내용을 실제로 반영한 구체적인 문제를 만들어줘.
+- question/options/explanation은 **반드시 한국어 문장으로만** 작성해줘. 참고 자료
+  발췌가 영어여도 그대로 옮기지 말고 한국어로 번역해줘 — 기술 용어(예: Self-Attention)나
+  수식 표기는 원래 형태를 유지해도 되지만, 문장 자체가 영어여서는 안 돼."""
 
     result = _generate_json(prompt, schema)
     questions = result.get("questions", [])
