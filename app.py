@@ -1,6 +1,7 @@
 from flask import Flask, jsonify, request
 
 import arxiv_service
+import curriculum_service
 import llm_service
 import pdf_service
 from keyword_catalog import TIERS, extract_keywords, resolve_keyword
@@ -12,18 +13,6 @@ MAX_COUNT = 15
 DEFAULT_COUNT = 8
 CANDIDATE_POOL_SIZE = 40
 KNOWLEDGE_BASE_HITS_LIMIT = 30
-
-# 학습 로드맵: PDF를 청크로 쪼갠 뒤, 아래 다섯 관점의 질의로 각각 가장 관련도 높은
-# 청크를 뽑아 합친다 (논문 전체를 다 넣지 않고, RAG로 핵심만 골라 프롬프트에 넣기 위함).
-ROADMAP_ASPECT_QUERIES = [
-    "motivation and the problem this paper tries to solve",
-    "background knowledge and related work the reader should already know",
-    "core method, architecture, or algorithm proposed in this paper",
-    "mathematical formulation, equations, and key definitions",
-    "experiments, results, and limitations",
-]
-ROADMAP_CHUNKS_PER_QUERY = 4
-ROADMAP_MAX_CHUNKS_TOTAL = 16
 
 
 def _clamp_recommend_count(raw_count):
@@ -106,64 +95,53 @@ def recommend():
     return jsonify({"search_keywords": search_keywords, "papers": papers})
 
 
-@app.post("/api/roadmap")
-def roadmap():
+@app.post("/api/curriculum")
+def curriculum():
+    """논문 하나(target_type="paper")든, "Transformer" 같은 순수 키워드
+    (target_type="keyword")든 같은 엔드포인트로 커리큘럼 DAG를 만든다. 실제 로직은
+    curriculum_service가 다 처리하고, 여기서는 입력 검증과 provider 이름 결정만 한다.
+    """
     body = request.get_json(silent=True) or {}
-    title = str(body.get("title", "")).strip()
-    summary = str(body.get("summary", "")).strip()
-    pdf_url = str(body.get("pdf_url", "")).strip()
+    target_type = str(body.get("target_type", "")).strip()
     interest = str(body.get("interest", "")).strip()
+    use_rag = body.get("use_rag", True)
 
-    if not pdf_url:
-        return jsonify({"error": "PDF 링크가 없어요."}), 400
+    if target_type == "paper":
+        pdf_url = str(body.get("pdf_url", "")).strip()
+        title = str(body.get("title", "")).strip()
+        if not pdf_url or not title:
+            return jsonify({"error": "논문 제목과 PDF 링크가 필요해요."}), 400
+        target = {"pdf_url": pdf_url, "title": title}
+        target_label = title
+        target_description = str(body.get("summary", "")).strip()
+    elif target_type == "keyword":
+        keyword = str(body.get("keyword", "")).strip()
+        if not keyword:
+            return jsonify({"error": "키워드를 입력해주세요."}), 400
+        target = {"keyword": keyword}
+        target_label = keyword
+        target_description = ""
+    else:
+        return jsonify({"error": "target_type은 'paper' 또는 'keyword'여야 해요."}), 400
+
+    provider_name = target_type if use_rag else "none"
 
     try:
-        pdf_stream = pdf_service.download_pdf(pdf_url)
-        full_text = pdf_service.extract_text(pdf_stream)
+        result = curriculum_service.generate_curriculum(
+            target_label=target_label,
+            target_description=target_description,
+            target=target,
+            provider_name=provider_name,
+            interest=interest,
+        )
     except (pdf_service.PdfDownloadError, pdf_service.PdfTextExtractionError) as exc:
         return jsonify({"error": str(exc)}), 502
-
-    chunks = pdf_service.chunk_text(full_text)
-    if not chunks:
-        return jsonify({"error": "PDF 내용을 분석할 수 없었어요."}), 502
-
-    # RAG: 논문 전체(수십 페이지일 수 있음)를 통째로 프롬프트에 넣는 대신, 다섯 관점
-    # 질의와 임베딩 유사도로 실제 이해에 필요한 부분만 골라낸다.
-    try:
-        chunk_embeddings = llm_service.embed_texts(chunks)
-        query_embeddings = llm_service.embed_texts(ROADMAP_ASPECT_QUERIES)
     except llm_service.QuotaExhaustedError as exc:
         return jsonify({"error": str(exc)}), 429
     except Exception:
-        return jsonify({"error": "논문 내용을 분석하는 데 실패했어요. 잠시 후 다시 시도해주세요."}), 502
+        return jsonify({"error": "커리큘럼 생성에 실패했어요. 잠시 후 다시 시도해주세요."}), 502
 
-    selected_indices = set()
-    for query_embedding in query_embeddings:
-        selected_indices.update(
-            llm_service.top_similar_indices(query_embedding, chunk_embeddings, ROADMAP_CHUNKS_PER_QUERY)
-        )
-    ordered_indices = sorted(selected_indices)[:ROADMAP_MAX_CHUNKS_TOTAL]
-    relevant_chunks = [chunks[i] for i in ordered_indices]
-
-    known_keywords = extract_keywords(" ".join(relevant_chunks), limit=KNOWLEDGE_BASE_HITS_LIMIT)
-
-    try:
-        steps = llm_service.generate_roadmap(title, summary, relevant_chunks, interest, known_keywords)
-    except llm_service.QuotaExhaustedError as exc:
-        return jsonify({"error": str(exc)}), 429
-    except Exception:
-        return jsonify({"error": "학습 로드맵 생성에 실패했어요. 잠시 후 다시 시도해주세요."}), 502
-
-    resolved_steps = [
-        {
-            "title": step.get("title", ""),
-            "description": step.get("description", ""),
-            "concepts": [resolve_keyword(name) for name in step.get("concepts", [])],
-        }
-        for step in steps
-    ]
-
-    return jsonify({"title": title, "steps": resolved_steps})
+    return jsonify(result)
 
 
 if __name__ == "__main__":

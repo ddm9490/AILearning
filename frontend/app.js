@@ -18,6 +18,11 @@ const resultsEmptyEl = document.getElementById("results-empty");
 const resultsCountEl = document.getElementById("results-count");
 const tierLegendEl = document.getElementById("tier-legend");
 const searchKeywordsBannerEl = document.getElementById("search-keywords-banner");
+const keywordCurriculumForm = document.getElementById("keyword-curriculum-form");
+const keywordCurriculumInput = document.getElementById("keyword-curriculum-input");
+const keywordCurriculumRagCheckbox = document.getElementById("keyword-curriculum-rag");
+const keywordCurriculumSubmitBtn = document.getElementById("keyword-curriculum-submit-btn");
+const keywordCurriculumResultEl = document.getElementById("keyword-curriculum-result");
 
 const state = {
   selectedKeywords: new Set(),
@@ -164,7 +169,7 @@ function buildPaperCard(paper) {
     card.appendChild(buildKeywordGroup("읽기 전 필요한 선수 지식", paper.prerequisites));
   }
   card.appendChild(buildKeywordGroup("AI 추천 키워드", paper.keywords));
-  card.appendChild(buildRoadmapSection(paper));
+  card.appendChild(buildCurriculumSection({ target_type: "paper", title: paper.title, summary: paper.summary, pdf_url: paper.pdf_url }, "이 논문 커리큘럼 만들기"));
 
   return card;
 }
@@ -196,17 +201,19 @@ function buildKeywordGroup(label, keywords) {
   return group;
 }
 
-function buildRoadmapSection(paper) {
+// target: {target_type: "paper", title, summary, pdf_url} 또는 {target_type: "keyword", keyword}
+// buttonLabel: 접었다 펼 때 보여줄 기본 버튼 문구
+function buildCurriculumSection(target, buttonLabel) {
   const wrapper = document.createElement("div");
-  wrapper.className = "roadmap-section";
+  wrapper.className = "curriculum-section";
 
   const button = document.createElement("button");
   button.type = "button";
-  button.className = "roadmap-btn";
-  button.textContent = "이 논문 학습 로드맵 만들기";
+  button.className = "curriculum-btn";
+  button.textContent = buttonLabel;
 
   const content = document.createElement("div");
-  content.className = "roadmap-content";
+  content.className = "curriculum-content";
   content.style.display = "none";
 
   let loaded = false;
@@ -221,22 +228,22 @@ function buildRoadmapSection(paper) {
 
     button.disabled = true;
     const originalText = button.textContent;
-    button.textContent = "AI가 PDF를 읽는 중... (최대 1~2분 걸려요)";
+    button.textContent = target.target_type === "paper"
+      ? "AI가 PDF를 읽는 중... (최대 1~2분 걸려요)"
+      : "AI가 관련 자료를 찾는 중...";
     content.innerHTML = "";
 
     try {
-      const data = await postJSON("/api/roadmap", {
-        title: paper.title,
-        summary: paper.summary,
-        pdf_url: paper.pdf_url,
+      const data = await postJSON("/api/curriculum", {
+        ...target,
         interest: interestInput.value.trim(),
       });
-      renderRoadmapSteps(content, data.steps);
+      renderCurriculumGraph(content, data);
       loaded = true;
     } catch (err) {
       const errorMsg = document.createElement("p");
-      errorMsg.className = "roadmap-error";
-      errorMsg.textContent = err.message || "학습 로드맵을 만들지 못했어요.";
+      errorMsg.className = "curriculum-error";
+      errorMsg.textContent = err.message || "커리큘럼을 만들지 못했어요.";
       content.appendChild(errorMsg);
     } finally {
       button.disabled = false;
@@ -248,40 +255,179 @@ function buildRoadmapSection(paper) {
   return wrapper;
 }
 
-function renderRoadmapSteps(container, steps) {
+const SVG_NS = "http://www.w3.org/2000/svg";
+const GRAPH_NODE_WIDTH = 190;
+const GRAPH_NODE_HEIGHT = 76;
+const GRAPH_COL_GAP = 90;
+const GRAPH_ROW_GAP = 22;
+const GRAPH_PADDING = 24;
+
+function createSvgEl(tag, attrs) {
+  const el = document.createElementNS(SVG_NS, tag);
+  Object.entries(attrs || {}).forEach(([key, value]) => el.setAttribute(key, value));
+  return el;
+}
+
+function layoutCurriculumGraph(nodes) {
+  const byLayer = new Map();
+  nodes.forEach((node) => {
+    const layer = node.layer ?? 0;
+    if (!byLayer.has(layer)) byLayer.set(layer, []);
+    byLayer.get(layer).push(node);
+  });
+
+  const layers = [...byLayer.keys()].sort((a, b) => a - b);
+  const positions = new Map();
+  let maxRows = 0;
+
+  layers.forEach((layer, colIndex) => {
+    const colNodes = byLayer.get(layer);
+    maxRows = Math.max(maxRows, colNodes.length);
+    colNodes.forEach((node, rowIndex) => {
+      positions.set(node.id, {
+        x: GRAPH_PADDING + colIndex * (GRAPH_NODE_WIDTH + GRAPH_COL_GAP),
+        y: GRAPH_PADDING + rowIndex * (GRAPH_NODE_HEIGHT + GRAPH_ROW_GAP),
+      });
+    });
+  });
+
+  const width = GRAPH_PADDING * 2 + layers.length * GRAPH_NODE_WIDTH + Math.max(0, layers.length - 1) * GRAPH_COL_GAP;
+  const height = GRAPH_PADDING * 2 + maxRows * GRAPH_NODE_HEIGHT + Math.max(0, maxRows - 1) * GRAPH_ROW_GAP;
+  return { positions, width: Math.max(width, GRAPH_NODE_WIDTH + GRAPH_PADDING * 2), height: Math.max(height, GRAPH_NODE_HEIGHT + GRAPH_PADDING * 2) };
+}
+
+function curriculumEdgePath(from, to) {
+  const x1 = from.x + GRAPH_NODE_WIDTH;
+  const y1 = from.y + GRAPH_NODE_HEIGHT / 2;
+  const x2 = to.x;
+  const y2 = to.y + GRAPH_NODE_HEIGHT / 2;
+  const curve = Math.max(40, (x2 - x1) / 2);
+  return `M ${x1} ${y1} C ${x1 + curve} ${y1}, ${x2 - curve} ${y2}, ${x2} ${y2}`;
+}
+
+function nodePrimaryTier(node) {
+  const tiers = node.concepts.map((c) => c.tier).filter((t) => t !== null && t !== undefined);
+  return tiers.length ? Math.min(...tiers) : null;
+}
+
+function renderCurriculumGraph(container, data) {
   container.innerHTML = "";
 
-  if (!steps || !steps.length) {
+  if (!data.nodes || !data.nodes.length) {
     const empty = document.createElement("p");
-    empty.className = "roadmap-error";
-    empty.textContent = "학습 로드맵을 만들지 못했어요.";
+    empty.className = "curriculum-error";
+    empty.textContent = "커리큘럼을 만들지 못했어요.";
     container.appendChild(empty);
     return;
   }
 
-  const list = document.createElement("ol");
-  list.className = "roadmap-steps";
+  const banner = document.createElement("p");
+  banner.className = "curriculum-rag-banner";
+  banner.textContent = data.used_rag
+    ? "관련 자료를 찾아 근거로 삼아 만들었어요 (RAG)."
+    : "AI의 사전 지식만으로 만들었어요 (RAG 미사용).";
+  container.appendChild(banner);
 
-  steps.forEach((step) => {
-    const li = document.createElement("li");
-    li.className = "roadmap-step";
+  const { positions, width, height } = layoutCurriculumGraph(data.nodes);
 
-    const title = document.createElement("div");
-    title.className = "roadmap-step-title";
-    title.textContent = step.title;
+  const graphWrap = document.createElement("div");
+  graphWrap.className = "curriculum-graph-wrap";
 
-    const desc = document.createElement("p");
-    desc.className = "roadmap-step-desc";
-    desc.textContent = step.description;
+  const svg = createSvgEl("svg", { width, height, viewBox: `0 0 ${width} ${height}` });
 
-    li.append(title, desc);
-    if (step.concepts && step.concepts.length) {
-      li.appendChild(buildTagRow(step.concepts));
-    }
-    list.appendChild(li);
+  const defs = createSvgEl("defs");
+  const marker = createSvgEl("marker", {
+    id: `curriculum-arrow-${Math.random().toString(36).slice(2, 8)}`,
+    viewBox: "0 0 10 10",
+    refX: "9",
+    refY: "5",
+    markerWidth: "7",
+    markerHeight: "7",
+    orient: "auto-start-reverse",
   });
+  marker.appendChild(createSvgEl("path", { d: "M 0 0 L 10 5 L 0 10 z", class: "curriculum-arrow-head" }));
+  defs.appendChild(marker);
+  svg.appendChild(defs);
+  const markerId = marker.getAttribute("id");
 
-  container.appendChild(list);
+  const edgesGroup = createSvgEl("g", { class: "curriculum-edges" });
+  (data.edges || []).forEach((edge) => {
+    const from = positions.get(edge.from);
+    const to = positions.get(edge.to);
+    if (!from || !to) return;
+    edgesGroup.appendChild(
+      createSvgEl("path", {
+        d: curriculumEdgePath(from, to),
+        class: "curriculum-edge",
+        "marker-end": `url(#${markerId})`,
+        "data-from": edge.from,
+        "data-to": edge.to,
+      })
+    );
+  });
+  svg.appendChild(edgesGroup);
+
+  const detailPanel = document.createElement("div");
+  detailPanel.className = "curriculum-detail";
+  detailPanel.textContent = "노드를 클릭하면 자세한 설명이 여기 나와요.";
+
+  const nodesGroup = createSvgEl("g", { class: "curriculum-nodes" });
+  data.nodes.forEach((node) => {
+    const pos = positions.get(node.id);
+    if (!pos) return;
+
+    const tier = nodePrimaryTier(node);
+    const classes = ["curriculum-node"];
+    if (node.is_target) classes.push("curriculum-node-target");
+    if (tier !== null) classes.push(`tier-${tier}`);
+
+    const g = createSvgEl("g", {
+      class: classes.join(" "),
+      transform: `translate(${pos.x}, ${pos.y})`,
+      tabindex: "0",
+    });
+
+    g.appendChild(createSvgEl("rect", { width: GRAPH_NODE_WIDTH, height: GRAPH_NODE_HEIGHT, rx: 12 }));
+
+    const foreignObject = createSvgEl("foreignObject", { width: GRAPH_NODE_WIDTH, height: GRAPH_NODE_HEIGHT });
+    const body = document.createElement("div");
+    body.className = "curriculum-node-body";
+    body.textContent = node.title;
+    foreignObject.appendChild(body);
+    g.appendChild(foreignObject);
+
+    const highlightEdges = (on) => {
+      const selector = `[data-from="${CSS.escape(node.id)}"], [data-to="${CSS.escape(node.id)}"]`;
+      edgesGroup.querySelectorAll(selector).forEach((p) => p.classList.toggle("curriculum-edge-active", on));
+    };
+    g.addEventListener("mouseenter", () => highlightEdges(true));
+    g.addEventListener("mouseleave", () => highlightEdges(false));
+    g.addEventListener("click", () => showCurriculumDetail(detailPanel, node));
+    g.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        showCurriculumDetail(detailPanel, node);
+      }
+    });
+
+    nodesGroup.appendChild(g);
+  });
+  svg.appendChild(nodesGroup);
+
+  graphWrap.appendChild(svg);
+  container.append(graphWrap, detailPanel);
+}
+
+function showCurriculumDetail(panel, node) {
+  panel.innerHTML = "";
+
+  const title = document.createElement("h4");
+  title.textContent = node.is_target ? `${node.title} (최종 목표)` : node.title;
+
+  const desc = document.createElement("p");
+  desc.textContent = node.description;
+
+  panel.append(title, desc, buildTagRow(node.concepts));
 }
 
 function setLoading(isLoading) {
@@ -319,8 +465,66 @@ async function handleSubmit(event) {
   }
 }
 
+async function handleKeywordCurriculumSubmit(event) {
+  event.preventDefault();
+  const keyword = keywordCurriculumInput.value.trim();
+
+  if (!keyword) {
+    keywordCurriculumResultEl.innerHTML = "";
+    const msg = document.createElement("p");
+    msg.className = "curriculum-error";
+    msg.textContent = "키워드를 입력해주세요.";
+    keywordCurriculumResultEl.appendChild(msg);
+    return;
+  }
+
+  keywordCurriculumSubmitBtn.disabled = true;
+  const originalText = keywordCurriculumSubmitBtn.textContent;
+  keywordCurriculumSubmitBtn.textContent = "AI가 커리큘럼을 만드는 중...";
+  keywordCurriculumResultEl.innerHTML = "";
+
+  try {
+    const data = await postJSON("/api/curriculum", {
+      target_type: "keyword",
+      keyword,
+      use_rag: keywordCurriculumRagCheckbox.checked,
+      interest: interestInput.value.trim(),
+    });
+    renderCurriculumGraph(keywordCurriculumResultEl, data);
+  } catch (err) {
+    const msg = document.createElement("p");
+    msg.className = "curriculum-error";
+    msg.textContent = err.message || "커리큘럼을 만들지 못했어요.";
+    keywordCurriculumResultEl.appendChild(msg);
+  } finally {
+    keywordCurriculumSubmitBtn.disabled = false;
+    keywordCurriculumSubmitBtn.textContent = originalText;
+  }
+}
+
+function initTabs() {
+  const tabButtons = document.querySelectorAll(".tab-btn");
+  const tabPanels = document.querySelectorAll(".tab-panel");
+
+  tabButtons.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const target = btn.dataset.tab;
+      tabButtons.forEach((b) => {
+        const active = b === btn;
+        b.classList.toggle("active", active);
+        b.setAttribute("aria-selected", String(active));
+      });
+      tabPanels.forEach((panel) => {
+        panel.hidden = panel.id !== `tab-panel-${target}`;
+      });
+    });
+  });
+}
+
 async function init() {
   searchForm.addEventListener("submit", handleSubmit);
+  keywordCurriculumForm.addEventListener("submit", handleKeywordCurriculumSubmit);
+  initTabs();
 
   renderSuggestedKeywords();
 

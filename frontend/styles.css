@@ -1,16 +1,24 @@
 :root {
-  --bg: #f7f7fb;
+  --bg: #f5f6fb;
   --surface: #ffffff;
-  --border: #e5e5ec;
-  --text: #1c1c26;
-  --text-muted: #6b6b7b;
-  --accent: #5b5bd6;
+  --surface-sunken: #f8f8fc;
+  --border: #e6e7f2;
+  --text: #14141f;
+  --text-muted: #6b6d80;
+  --accent: #4f46e5;
+  --accent-hover: #4338ca;
+  --accent-soft: #eef0ff;
   --accent-contrast: #ffffff;
-  --chip-bg: #eeeef8;
-  --chip-bg-active: #5b5bd6;
+  --accent-shadow: rgba(79, 70, 229, 0.24);
+  --chip-bg: #eef0f8;
+  --chip-bg-active: #4f46e5;
   --chip-text-active: #ffffff;
-  --link: #5b5bd6;
-  --shadow: 0 1px 2px rgba(20, 20, 40, 0.04), 0 8px 24px rgba(20, 20, 40, 0.06);
+  --link: #4f46e5;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --shadow-sm: 0 1px 2px rgba(20, 20, 40, 0.04), 0 2px 6px rgba(20, 20, 40, 0.04);
+  --shadow-md: 0 2px 4px rgba(20, 20, 40, 0.04), 0 10px 28px rgba(20, 20, 40, 0.07);
 
   /* 키워드 추상화 단계(tier 0~6): 수학 기초 -> 연산 -> 레이어/학습기법 -> 최적화 -> 소규모 아키텍처 -> 대규모 아키텍처 -> 상위 패러다임 */
   --tier-0-bg: #eef2ff;
@@ -31,18 +39,23 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #15151c;
-    --surface: #1e1e28;
-    --border: #2c2c38;
-    --text: #f0f0f5;
-    --text-muted: #a0a0b2;
-    --accent: #8b8bf0;
+    --bg: #131319;
+    --surface: #1c1c26;
+    --surface-sunken: #191922;
+    --border: #2c2c3a;
+    --text: #f1f1f6;
+    --text-muted: #a0a1b5;
+    --accent: #8b83f6;
+    --accent-hover: #a39cf8;
+    --accent-soft: #23213f;
     --accent-contrast: #12121a;
-    --chip-bg: #262633;
-    --chip-bg-active: #8b8bf0;
+    --accent-shadow: rgba(139, 131, 246, 0.32);
+    --chip-bg: #26263380;
+    --chip-bg-active: #8b83f6;
     --chip-text-active: #12121a;
-    --link: #a5a5f5;
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
+    --link: #a39cf8;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 6px rgba(0, 0, 0, 0.2);
+    --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.3), 0 12px 30px rgba(0, 0, 0, 0.4);
 
     --tier-0-bg: #23234a;
     --tier-0-text: #a5b4fc;
@@ -69,14 +82,15 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: "Pretendard", "Apple SD Gothic Neo", "Segoe UI", system-ui, sans-serif;
+  font-family: "Pretendard Variable", "Pretendard", "Apple SD Gothic Neo", "Segoe UI", system-ui, sans-serif;
   line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
 }
 
 .page {
   max-width: 880px;
   margin: 0 auto;
-  padding: 32px 20px 64px;
+  padding: 40px 20px 72px;
 }
 
 .hero {
@@ -85,21 +99,70 @@ body {
 }
 
 .hero h1 {
-  font-size: 1.9rem;
-  margin: 0 0 8px;
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin: 0 0 10px;
 }
 
 .hero-sub {
   color: var(--text-muted);
-  margin: 0;
+  margin: 0 auto;
+  max-width: 46em;
+  font-size: 0.95rem;
+}
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  width: fit-content;
+  margin: 0 auto 28px;
+  background: var(--chip-bg);
+  padding: 4px;
+  border-radius: 999px;
+}
+
+.tab-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-weight: 600;
+  font-size: 0.92rem;
+  padding: 10px 20px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.tab-btn:hover {
+  color: var(--text);
+}
+
+.tab-btn.active {
+  background: var(--surface);
+  color: var(--accent);
+  box-shadow: var(--shadow-sm);
+}
+
+.tab-icon {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.tab-panel[hidden] {
+  display: none;
 }
 
 .panel {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 24px;
-  box-shadow: var(--shadow);
+  border-radius: var(--radius-lg);
+  padding: 26px;
+  box-shadow: var(--shadow-md);
 }
 
 .search-panel {
@@ -118,20 +181,25 @@ body {
 }
 
 #interest-input,
-#count-input {
+#count-input,
+#keyword-curriculum-input {
   width: 100%;
   padding: 12px 14px;
-  border-radius: 10px;
-  border: 1px solid var(--border);
-  background: var(--bg);
+  border-radius: var(--radius-sm);
+  border: 1.5px solid var(--border);
+  background: var(--surface-sunken);
   color: var(--text);
+  font-family: inherit;
   font-size: 1rem;
+  transition: border-color 0.15s ease;
 }
 
 #interest-input:focus,
-#count-input:focus {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
+#count-input:focus,
+#keyword-curriculum-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 .chip-row {
@@ -142,13 +210,20 @@ body {
 }
 
 .chip {
-  border: 1px solid var(--border);
+  border: 1.5px solid var(--border);
   background: var(--chip-bg);
   color: var(--text);
-  padding: 6px 12px;
+  padding: 6px 13px;
   border-radius: 999px;
+  font-family: inherit;
   font-size: 0.85rem;
   cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.chip:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .chip.active {
@@ -161,33 +236,44 @@ body {
   width: 100%;
   padding: 13px;
   border: none;
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   background: var(--accent);
   color: var(--accent-contrast);
+  font-family: inherit;
   font-size: 1rem;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
+  box-shadow: 0 6px 16px -4px var(--accent-shadow);
+  transition: background 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
 }
 
 .submit-btn:hover:not(:disabled) {
-  filter: brightness(1.05);
+  background: var(--accent-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px -4px var(--accent-shadow);
+}
+
+.submit-btn:active:not(:disabled) {
+  transform: translateY(0);
 }
 
 .submit-btn:disabled {
-  opacity: 0.7;
+  opacity: 0.65;
   cursor: wait;
+  box-shadow: none;
 }
 
 .results-header {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 
 .results-header h2 {
   margin: 0;
   font-size: 1.2rem;
+  font-weight: 700;
 }
 
 .results-count {
@@ -197,8 +283,11 @@ body {
 
 .empty-state {
   color: var(--text-muted);
-  padding: 24px 0;
+  padding: 36px 20px;
   text-align: center;
+  border: 1.5px dashed var(--border);
+  border-radius: var(--radius-md);
+  font-size: 0.92rem;
 }
 
 .results-list {
@@ -208,9 +297,15 @@ body {
 
 .paper-card {
   border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 18px;
-  background: var(--bg);
+  border-radius: var(--radius-md);
+  padding: 18px 20px;
+  background: var(--surface-sunken);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.paper-card:hover {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-sm);
 }
 
 .paper-card-top {
@@ -225,6 +320,7 @@ body {
   font-size: 1.05rem;
   font-weight: 700;
   margin: 0;
+  letter-spacing: -0.01em;
 }
 
 .paper-meta {
@@ -236,24 +332,30 @@ body {
 .paper-links {
   flex-shrink: 0;
   display: flex;
-  gap: 8px;
+  gap: 6px;
   white-space: nowrap;
 }
 
 .paper-links a {
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: var(--link);
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  background: var(--chip-bg);
+  padding: 5px 11px;
+  border-radius: 999px;
   text-decoration: none;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
 .paper-links a:hover {
-  text-decoration: underline;
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 
 .paper-summary {
   margin: 0 0 12px;
   font-size: 0.92rem;
+  color: var(--text);
 }
 
 .keyword-group {
@@ -263,7 +365,9 @@ body {
 .keyword-group-label {
   font-size: 0.75rem;
   color: var(--text-muted);
-  font-weight: 600;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
   margin-bottom: 6px;
 }
 
@@ -275,91 +379,181 @@ body {
 
 .tag {
   font-size: 0.78rem;
+  font-weight: 600;
   padding: 4px 10px;
   border-radius: 999px;
 }
 
-.roadmap-section {
+.curriculum-section {
   margin-top: 14px;
   padding-top: 14px;
   border-top: 1px solid var(--border);
 }
 
-.roadmap-btn {
-  border: 1px solid var(--accent);
+.curriculum-btn {
+  border: 1.5px solid var(--accent);
   background: transparent;
   color: var(--accent);
   padding: 8px 14px;
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
+  font-family: inherit;
   font-size: 0.85rem;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
-.roadmap-btn:hover:not(:disabled) {
+.curriculum-btn:hover:not(:disabled) {
   background: var(--accent);
   color: var(--accent-contrast);
 }
 
-.roadmap-btn:disabled {
+.curriculum-btn:disabled {
   opacity: 0.7;
   cursor: wait;
 }
 
-.roadmap-content {
+.curriculum-content {
   margin-top: 12px;
 }
 
-.roadmap-error {
+.curriculum-error {
   color: var(--text-muted);
   font-size: 0.85rem;
 }
 
-.roadmap-steps {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 12px;
-  counter-reset: roadmap-step;
+.curriculum-panel .panel-sub {
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  margin: 4px 0 20px;
 }
 
-.roadmap-step {
-  counter-increment: roadmap-step;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 14px 14px 14px 40px;
-  position: relative;
-  background: var(--surface);
-}
-
-.roadmap-step::before {
-  content: counter(roadmap-step);
-  position: absolute;
-  left: 12px;
-  top: 14px;
-  width: 20px;
-  height: 20px;
-  border-radius: 999px;
-  background: var(--accent);
-  color: var(--accent-contrast);
-  font-size: 0.75rem;
+.curriculum-panel h2 {
+  margin: 0 0 4px;
+  font-size: 1.25rem;
   font-weight: 700;
+}
+
+.rag-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-bottom: 16px;
+  cursor: pointer;
+}
+
+.rag-toggle input {
+  accent-color: var(--accent);
+  width: 16px;
+  height: 16px;
+}
+
+.curriculum-rag-banner {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--accent-soft);
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 999px;
+  margin: 0 0 12px;
+}
+
+.curriculum-graph-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+  padding: 12px;
+}
+
+.curriculum-node {
+  cursor: pointer;
+}
+
+.curriculum-node rect {
+  fill: var(--surface);
+  stroke: var(--border);
+  stroke-width: 1.5;
+  transition: stroke 0.15s ease;
+}
+
+.curriculum-node:hover rect,
+.curriculum-node:focus rect {
+  stroke: var(--accent);
+  outline: none;
+}
+
+.curriculum-node-body {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
   display: flex;
   align-items: center;
   justify-content: center;
+  text-align: center;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  line-height: 1.3;
 }
 
-.roadmap-step-title {
-  font-weight: 700;
-  font-size: 0.95rem;
-  margin-bottom: 4px;
+.curriculum-node-target rect {
+  stroke: var(--accent);
+  stroke-width: 2.5;
 }
 
-.roadmap-step-desc {
-  margin: 0 0 8px;
-  font-size: 0.88rem;
+.curriculum-node-target .curriculum-node-body {
+  font-weight: 800;
+}
+
+.curriculum-node.tier-0 rect { fill: var(--tier-0-bg); }
+.curriculum-node.tier-1 rect { fill: var(--tier-1-bg); }
+.curriculum-node.tier-2 rect { fill: var(--tier-2-bg); }
+.curriculum-node.tier-3 rect { fill: var(--tier-3-bg); }
+.curriculum-node.tier-4 rect { fill: var(--tier-4-bg); }
+.curriculum-node.tier-5 rect { fill: var(--tier-5-bg); }
+.curriculum-node.tier-6 rect { fill: var(--tier-6-bg); }
+
+.curriculum-edge {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 1.5;
+  transition: stroke 0.15s ease, stroke-width 0.15s ease;
+}
+
+.curriculum-edge-active {
+  stroke: var(--accent);
+  stroke-width: 2.5;
+}
+
+.curriculum-arrow-head {
+  fill: var(--border);
+}
+
+.curriculum-detail {
+  margin-top: 14px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
   color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.curriculum-detail h4 {
+  margin: 0 0 6px;
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.curriculum-detail p {
+  margin: 0 0 10px;
 }
 
 .tag.tag-neutral { background: var(--chip-bg); color: var(--text-muted); }
@@ -376,7 +570,7 @@ body {
   flex-wrap: wrap;
   gap: 10px 16px;
   margin-bottom: 16px;
-  padding-bottom: 14px;
+  padding-bottom: 16px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -401,7 +595,7 @@ body {
   align-items: center;
   gap: 8px;
   margin-bottom: 16px;
-  padding-bottom: 14px;
+  padding-bottom: 16px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -413,6 +607,7 @@ body {
 
 .search-keyword-badge {
   font-size: 0.78rem;
+  font-weight: 600;
   padding: 4px 10px;
   border-radius: 999px;
   background: var(--chip-bg-active);
@@ -423,5 +618,5 @@ body {
   text-align: center;
   color: var(--text-muted);
   font-size: 0.8rem;
-  margin-top: 32px;
+  margin-top: 36px;
 }

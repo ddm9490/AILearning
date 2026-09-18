@@ -1,14 +1,16 @@
-"""Gemini API 연동.
+"""Gemini API 연동 (생성 전용).
 
-관심사 -> 검색 키워드 정제, 후보 논문 -> 추천 논문 선별/키워드 태깅 두 단계를 맡는다.
-Gemini 모델이 503(UNAVAILABLE)을 자주 반환하는 걸 직접 확인했으므로, 두 단계 모두
-재시도 로직을 거친다. 또한 무료 티어의 일일 quota는 모델별로 따로 관리되므로
-(gemini-3.6-flash quota가 다 차도 gemini-3.1-flash-lite는 멀쩡함을 직접 확인함),
-주 모델의 quota가 소진되면 보조 모델로 자동 전환한다.
+관심사 -> 검색 키워드 정제, 후보 논문 -> 추천 논문 선별/키워드 태깅, 학습 로드맵
+생성까지 세 가지 "생성" 작업을 맡는다. Gemini 모델이 503(UNAVAILABLE)을 자주
+반환하는 걸 직접 확인했으므로 재시도 로직을 거친다. 또한 무료 티어의 일일 quota는
+모델별로 따로 관리되므로(gemini-3.6-flash quota가 다 차도 gemini-3.1-flash-lite는
+멀쩡함을 직접 확인함), 주 모델의 quota가 소진되면 보조 모델로 자동 전환한다.
+
+임베딩(검색)은 이 파일이 아니라 embedding_service.py가 담당한다 — Gemini 임베딩은
+무료 티어 quota가 금방 소진돼서(실측으로 확인함) 로컬 임베딩(fastembed)으로 옮겼다.
 """
 
 import json
-import math
 import os
 import re
 import time
@@ -23,7 +25,6 @@ load_dotenv()
 # 다음 모델로 넘어간다. gemini-3.1-flash-lite는 성능은 낮지만 별도 quota를 쓴다.
 MODELS = ["gemini-3.1-flash-lite"]
 # "gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash", "gemini-3-flash", "gemini-3.5-flash-lite", 실제 배포떄 쓸 모델의 토큰을 아끼기 위해
-EMBEDDING_MODEL = "gemini-embedding-001"  # 실제로 존재하는지 확인함 (text-embedding-004는 이 키로 404남)
 NUM_SEARCH_KEYWORDS = 5
 RETRY_ATTEMPTS = 4
 RETRY_DELAY_SECONDS = 2
@@ -237,71 +238,42 @@ def curate_papers(interest_text, selected_keywords, candidates, count, known_key
     return papers[:count]
 
 
-def embed_texts(texts):
-    """텍스트 여러 개를 한 번의 API 호출로 임베딩한다 (학습 로드맵 RAG 검색용)."""
-    if not texts:
-        return []
+def generate_curriculum(target_label, target_description, context_chunks, interest_text, known_keywords=None):
+    """target_label(논문 제목이든 "Transformer" 같은 키워드든)을 이해하기 위한 선수
+    개념들의 DAG(비순환 방향 그래프)를 만든다. 선형 목록이 아니라 진짜 그래프 —
+    독립된 선수 개념은 서로 다른 가지(branch)로 존재할 수 있다.
 
-    client = _get_client()
-    last_error = None
-    for attempt in range(RETRY_ATTEMPTS):
-        try:
-            response = client.models.embed_content(model=EMBEDDING_MODEL, contents=texts)
-            return [list(e.values) for e in response.embeddings]
-        except Exception as exc:  # 임베딩도 generate_content와 같은 503/429를 겪을 수 있다.
-            message = str(exc)
-            if _is_daily_quota_exhausted(message):
-                raise QuotaExhaustedError(
-                    "Gemini 임베딩의 일일 요청 한도를 다 썼어요. 내일 다시 시도해주세요."
-                ) from exc
-
-            last_error = exc
-            if attempt >= RETRY_ATTEMPTS - 1:
-                break
-            if "RESOURCE_EXHAUSTED" in message or "429" in message:
-                delay = _rate_limit_delay(message)
-            else:
-                delay = RETRY_DELAY_SECONDS * (attempt + 1)
-            time.sleep(delay)
-    raise last_error
-
-
-def _cosine_similarity(a, b):
-    dot = sum(x * y for x, y in zip(a, b))
-    norm_a = math.sqrt(sum(x * x for x in a))
-    norm_b = math.sqrt(sum(x * x for x in b))
-    if norm_a == 0 or norm_b == 0:
-        return 0.0
-    return dot / (norm_a * norm_b)
-
-
-def top_similar_indices(query_embedding, candidate_embeddings, top_k):
-    """query_embedding과 가장 비슷한 candidate_embeddings의 인덱스 top_k개 (유사도 내림차순)."""
-    scored = [(_cosine_similarity(query_embedding, emb), i) for i, emb in enumerate(candidate_embeddings)]
-    scored.sort(key=lambda pair: pair[0], reverse=True)
-    return [i for _, i in scored[:top_k]]
-
-
-def generate_roadmap(title, summary, chunks, interest_text, known_keywords=None):
-    """RAG로 골라낸 논문 발췌문을 바탕으로 단계별 학습 로드맵을 만든다.
-
-    chunks: PDF에서 임베딩 유사도로 골라낸 관련 발췌문 리스트 (전체 PDF가 아님).
-    반환: [{"title", "description", "concepts": [str, ...]}, ...] (쉬운 것 -> 어려운 것 순)
+    context_chunks: context_providers가 골라낸 근거 발췌문. 비어 있으면(RAG 없이)
+    Gemini의 사전 지식만으로 만들라고 명시적으로 안내한다 — RAG on/off를 프롬프트
+    레벨에서도 명확히 구분하는 것.
+    반환: {"nodes": [{"id","title","description","concepts":[str,...],"is_target":bool}],
+           "edges": [{"from","to"}]} (사이클 검증은 curriculum_service가 한다)
     """
     known_keywords = known_keywords or []
     known_keywords_text = ", ".join(kw["name"] for kw in known_keywords) if known_keywords else "(해당 없음)"
 
-    excerpts = "\n\n".join(f"[발췌 {i + 1}]\n{chunk}" for i, chunk in enumerate(chunks))
-    interest_block = f"\n사용자가 원래 갖고 있던 관심사/맥락: {interest_text.strip()}\n" if interest_text.strip() else ""
+    if context_chunks:
+        excerpts = "\n\n".join(f"[발췌 {i + 1}]\n{chunk}" for i, chunk in enumerate(context_chunks))
+        context_section = f"""아래는 이 주제와 관련해 실제로 찾은 참고 자료 발췌문이야. description을 쓸 때
+가능하면 여기 내용에 근거해서 구체적으로 써줘:
+---
+{excerpts}
+---"""
+    else:
+        context_section = "참고 자료 없이, 네가 알고 있는 지식만으로 작성해줘."
+
+    target_description_block = f"\n목표에 대한 설명: {target_description.strip()}\n" if target_description.strip() else ""
+    interest_block = f"\n학습자의 관심사/맥락: {interest_text.strip()}\n" if interest_text.strip() else ""
 
     schema = {
         "type": "object",
         "properties": {
-            "steps": {
+            "nodes": {
                 "type": "array",
                 "items": {
                     "type": "object",
                     "properties": {
+                        "id": {"type": "string"},
                         "title": {"type": "string"},
                         "description": {"type": "string"},
                         "concepts": {
@@ -310,43 +282,57 @@ def generate_roadmap(title, summary, chunks, interest_text, known_keywords=None)
                             "minItems": 1,
                             "maxItems": 4,
                         },
+                        "is_target": {"type": "boolean"},
                     },
-                    "required": ["title", "description", "concepts"],
+                    "required": ["id", "title", "description", "concepts", "is_target"],
                 },
-                "minItems": 3,
-                "maxItems": 8,
-            }
+                "minItems": 4,
+                "maxItems": 14,
+            },
+            "edges": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "from": {"type": "string"},
+                        "to": {"type": "string"},
+                    },
+                    "required": ["from", "to"],
+                },
+            },
         },
-        "required": ["steps"],
+        "required": ["nodes", "edges"],
     }
 
-    prompt = f"""너는 논문을 실제로 읽고 이해할 수 있도록 도와주는 학습 코치야.
+    prompt = f"""너는 AI/ML 학습 커리큘럼을 설계하는 코치야. 학습자의 최종 목표는
+"{target_label}"을(를) 제대로 이해하는 거야.
+{target_description_block}{interest_block}
+{context_section}
 
-논문 제목: {title}
-논문 초록: {summary}
-{interest_block}
-아래는 이 논문 PDF에서 실제로 발췌한 내용이야 (전체가 아니라 이해에 중요한 부분 위주로 골랐어):
----
-{excerpts}
----
-
-참고 지식 베이스 (위 발췌문에서 실제로 등장하는, 우리가 이미 정의해둔 정확한 용어들이야.
-concepts를 고를 때 해당되는 게 있으면 이 표기를 우선 써줘. 목록에 없어도 적절한 개념이
-있으면 자유롭게 추가해도 돼):
+참고 지식 베이스 (아래 표기가 concepts에 해당되면 이 표기를 우선 써줘. 목록에 없어도
+적절한 개념이 있으면 자유롭게 추가해도 돼):
 ---
 {known_keywords_text}
 ---
 
-위 발췌 내용을 바탕으로, 이 논문을 실제로 이해하기 위한 학습 로드맵을 3~8단계로 만들어줘.
-- 쉬운 선수 개념부터 시작해서 논문의 핵심 아이디어, 세부 기법을 거쳐 마지막엔 논문 자체를
-  읽는 단계로, 점점 어려워지는 순서로 구성해줘.
-- 각 단계는 title(짧은 제목), description(1~2문장 설명 — 발췌 내용에 근거해서 "이 논문에서는"
-  처럼 구체적으로, 일반론 말고), concepts(이 단계에서 알아야 할 키워드 1~4개)를 가져야 해.
-- concepts는 짧고 구체적으로: 기술/아키텍처/메커니즘 용어는 영어로, 수학 개념은 한국어로
-  표기해줘."""
+"{target_label}"을 이해하기 위해 필요한 선수 개념들을 노드로, "먼저 알아야 하는 관계"를
+간선(edge)으로 하는 학습 커리큘럼 DAG(비순환 방향 그래프)를 만들어줘.
+
+- 노드는 4~14개. 가장 기초적인 개념부터 시작해서 "{target_label}" 자체를 나타내는
+  노드로 수렴해야 해. "{target_label}"을 나타내는 노드는 정확히 하나만 만들고
+  is_target을 true로 표시해 (나머지는 전부 false).
+- 서로 관계없는 개념끼리 억지로 순서를 만들지 마. 독립적인 선수 개념은 별도의
+  가지(branch)로 둬 — 일렬로 나열한 목록이 아니라 진짜 그래프 구조를 만드는 게 목표야
+  (예: "선형대수"와 "확률/통계"는 서로 의존하지 않고 둘 다 다른 노드의 선수 조건일 수 있어).
+- edges의 from/to는 반드시 nodes에 있는 id를 정확히 사용해. from은 "먼저 배워야 하는
+  노드", to는 "그다음에 배우는 노드"야. 사이클(순환 참조)이 생기면 안 돼.
+- 각 노드는 id(짧고 고유한 문자열, 예: "n1"), title(짧은 제목),
+  description(1~2문장 설명 — 왜 필요한지, 컨텍스트가 있으면 구체적으로),
+  concepts(이 노드에서 알아야 할 키워드 1~4개)를 가져야 해.
+- concepts는 짧고 구체적으로: 기술/아키텍처/메커니즘 용어는 영어로, 수학 개념은
+  한국어로 표기해줘."""
 
     result = _generate_json(prompt, schema)
-    steps = result.get("steps", [])
-    if not steps:
-        raise RuntimeError("Gemini가 학습 로드맵을 반환하지 않았어요.")
-    return steps
+    if not result.get("nodes"):
+        raise RuntimeError("Gemini가 커리큘럼을 반환하지 않았어요.")
+    return result
