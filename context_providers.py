@@ -71,7 +71,8 @@ def no_rag_provider(target):
 
 def paper_pdf_provider(target):
     """target: {"pdf_url": str, "title": str(선택)}. 논문 PDF를 받아 청크 임베딩
-    유사도로 관련 발췌를 고르고, title이 있으면 D2L 교재에서도 배경 설명을 찾아 섞는다."""
+    유사도로 관련 발췌를 고르고, title이 있으면 교재/코스 소스에서도 배경 설명을
+    찾아 섞는다."""
     pdf_url = target.get("pdf_url", "").strip()
     if not pdf_url:
         return []
@@ -84,16 +85,18 @@ def paper_pdf_provider(target):
     chunks = [f"[이 논문 PDF 원문] {c}" for c in raw_chunks]
 
     title = target.get("title", "").strip()
-    textbook_chunks = [f"[D2L 교재] {c}" for c in _textbook_chunks(title)] if title else []
+    # textbook_index.search()가 이미 소스별 태그(예: "[D2L 교재] ...", "[OpenAI Spinning
+    # Up] ...")를 붙여서 돌려주므로 여기서 다시 감쌀 필요가 없다.
+    textbook_chunks = _textbook_chunks(title) if title else []
 
     return _retrieve_relevant(chunks + textbook_chunks)
 
 
 def keyword_provider(target):
     """target: {"keyword": str}. arXiv에서 그 키워드의 대표 논문 몇 개를 찾아 초록을
-    발췌 텍스트로 쓰고(PDF 전체를 받지 않아 훨씬 가벼움), D2L 교재에서 같은 키워드로
-    찾은 배경 설명 발췌도 함께 섞는다 — 논문은 "최신 연구가 뭘 했는지", 교재는
-    "개념을 처음부터 어떻게 설명하는지"를 보완해준다."""
+    발췌 텍스트로 쓰고(PDF 전체를 받지 않아 훨씬 가벼움), D2L/HF Course/Spinning Up
+    중 같은 키워드로 찾은 배경 설명 발췌도 함께 섞는다 — 논문은 "최신 연구가 뭘
+    했는지", 교재/코스는 "개념을 처음부터 어떻게 설명하는지"를 보완해준다."""
     keyword = target.get("keyword", "").strip()
     if not keyword:
         return []
@@ -102,7 +105,8 @@ def keyword_provider(target):
     # 논문 제목까지 태그로 남겨서, LLM이 "OOO 논문에서는 ~라고 소개한다"처럼 구체적으로
     # 인용할 수 있게 한다 (그냥 "참고 자료에 따르면"보다 훨씬 자세해진다).
     arxiv_chunks = [f"[arXiv 논문 \"{r.title}\"] {' '.join(r.summary.split())}" for r in results]
-    textbook_chunks = [f"[D2L 교재] {c}" for c in _textbook_chunks(keyword)]
+    # textbook_index.search()가 이미 소스별 태그를 붙여서 돌려준다.
+    textbook_chunks = _textbook_chunks(keyword)
 
     return _retrieve_relevant(arxiv_chunks + textbook_chunks)
 

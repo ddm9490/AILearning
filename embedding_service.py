@@ -56,11 +56,16 @@ def _get_model():
 EMBED_BATCH_SIZE = 2
 
 
-def embed_texts(texts):
-    """텍스트 여러 개를 로컬에서 임베딩한다. quota/네트워크 걱정이 없다."""
+def embed_texts(texts, batch_size=None):
+    """텍스트 여러 개를 로컬에서 임베딩한다. quota/네트워크 걱정이 없다.
+
+    batch_size를 안 주면 EMBED_BATCH_SIZE(2, 512MB 배포 환경에 맞춘 안전값)를 쓴다.
+    textbook_index.py처럼 서버 요청 경로가 아니라 로컬에서 한 번만 돌리는 오프라인
+    스크립트는 이 메모리 제약을 받을 이유가 없어서, 그런 곳에서는 호출부에서 더 큰
+    값을 직접 넘겨서 속도를 우선할 수 있다."""
     if not texts:
         return []
-    return [vec.tolist() for vec in _get_model().embed(texts, batch_size=EMBED_BATCH_SIZE)]
+    return [vec.tolist() for vec in _get_model().embed(texts, batch_size=batch_size or EMBED_BATCH_SIZE)]
 
 
 def _cosine_similarity(a, b):

@@ -23,7 +23,9 @@
   인터랙티브 지식 노드 맵(DAG) 생성 — 노드를 클릭하면 설명/학습 포인트/키워드가 보이고,
   호버하면 연결된 관계가 강조됩니다
 - RAG는 켜고 끌 수 있습니다: 논문 커리큘럼은 실제 PDF를, 키워드 커리큘럼은 관련 논문
-  초록 + [Dive into Deep Learning](https://d2l.ai)(CC BY-SA 4.0) 교재 발췌를 함께
+  초록 + 오픈 라이선스 학습 자료 3종([Dive into Deep Learning](https://d2l.ai)(CC
+  BY-SA 4.0), [Hugging Face NLP Course](https://huggingface.co/course)(Apache 2.0),
+  [OpenAI Spinning Up in Deep RL](https://spinningup.openai.com)(MIT)) 발췌를 함께
   근거로 쓰거나, 꺼서 AI의 사전 지식만으로 만들 수도 있습니다. 그라운딩 소스는
   provider 하나만 갈아끼우면 바뀌는 pluggable 구조로 되어 있습니다
 - **커리큘럼은 저장됩니다** — "내 커리큘럼" 탭에서 예전에 만든 것도 다시 볼 수 있고,
@@ -61,7 +63,9 @@ python3 app.py
 `app.py`의 포트를 바꿔서 실행하세요). 첫 실행 시 로컬 임베딩 모델(67MB)이 자동으로
 다운로드됩니다. 커리큘럼/저장 데이터는 SQLite(`data/app.db`)에 자동으로 생성됩니다.
 
-키워드 커리큘럼에 D2L 교재 내용을 근거로 쓰려면 (`git` CLI 필요, 1회성, 5분 정도 소요):
+키워드 커리큘럼에 D2L/HF Course/Spinning Up 내용을 근거로 쓰려면 (`git` CLI 필요,
+1회성, 10~15분 정도 소요 — 소스 하나만 다시 빌드하려면 `python3 textbook_index.py d2l`
+처럼 이름을 붙여서 실행):
 
 ```bash
 python3 textbook_index.py
@@ -81,7 +85,7 @@ pdf_service.py           논문 PDF 다운로드/텍스트 추출/청크 분할
 context_providers.py     커리큘럼 그라운딩(RAG) pluggable 전략
 curriculum_service.py    커리큘럼(DAG) 생성 오케스트레이션 + 사이클 검증
 curriculum_store.py       커리큘럼 저장/조회/삭제 + 노드 완료 상태 + AI 설명/퀴즈 캐싱 (SQLite)
-textbook_index.py         D2L 교재 오프라인 인덱싱 (로컬 파일 캐시, 벡터 DB 없음)
+textbook_index.py         D2L/HF Course/Spinning Up 오프라인 인덱싱 (로컬 파일 캐시, 벡터 DB 없음)
 keyword_catalog.py       키워드 추상화 단계(tier) 분류 체계
 frontend/                정적 프론트엔드 (백엔드 API를 호출해 동적으로 렌더링, SVG DAG 뷰 포함)
 ```
