@@ -25,7 +25,6 @@ load_dotenv()
 # 다음 모델로 넘어간다. gemini-3.1-flash-lite는 성능은 낮지만 별도 quota를 쓴다.
 MODELS = ["gemini-3.1-flash-lite"]
 # "gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash", "gemini-3-flash", "gemini-3.5-flash-lite", 실제 배포떄 쓸 모델의 토큰을 아끼기 위해
-NUM_SEARCH_KEYWORDS = 5
 RETRY_ATTEMPTS = 4
 RETRY_DELAY_SECONDS = 2
 DEFAULT_RATE_LIMIT_DELAY = 20
@@ -106,11 +105,17 @@ def _generate_json(prompt, schema):
             continue  # 다음 모델(보조 모델)로 넘어간다.
 
 
-def refine_search_keywords(interest_text, selected_keywords):
-    """자유 입력 관심사 + 선택된 키워드를 arXiv 검색에 적합한 영어 키워드 5개로 정제한다."""
-    combined = interest_text.strip()
-    if selected_keywords:
-        combined = f"{combined}\n선택한 키워드: {', '.join(selected_keywords)}".strip()
+def refine_search_keywords(interest_text, count):
+    """자유 입력 관심사(자연어)만 arXiv 검색에 적합한 영어 키워드 count개로 정제한다.
+
+    사용자가 직접 고르거나 입력한 "정확한" 키워드(예: "ConvNeXt")는 이 함수에 절대
+    넣지 않는다 — LLM이 특정 아키텍처/모델 이름 같은 고유명사를 "이상하게 해석해서
+    다른 키워드로 바꿔버리는" 문제를 실제로 겪어서(사용자 리포트), 정확한 키워드는
+    app.py에서 이 함수를 거치지 않고 검색어에 그대로 합친다. 이 함수는 순수 자연어
+    설명("~을 배우고 싶어요" 같은)을 검색어로 "번역"하는 역할만 한다.
+    """
+    if count <= 0:
+        return []
 
     schema = {
         "type": "object",
@@ -118,8 +123,8 @@ def refine_search_keywords(interest_text, selected_keywords):
             "keywords": {
                 "type": "array",
                 "items": {"type": "string"},
-                "minItems": NUM_SEARCH_KEYWORDS,
-                "maxItems": NUM_SEARCH_KEYWORDS,
+                "minItems": count,
+                "maxItems": count,
             }
         },
         "required": ["keywords"],
@@ -128,16 +133,16 @@ def refine_search_keywords(interest_text, selected_keywords):
     prompt = f"""너는 AI 논문 검색을 도와주는 어시스턴트야. 아래는 사용자가 입력한 관심 분야야.
 
 ---
-{combined}
+{interest_text.strip()}
 ---
 
-이 관심사를 arXiv 검색에 적합한 영어 키워드/짧은 구문 정확히 {NUM_SEARCH_KEYWORDS}개로 바꿔줘.
+이 관심사를 arXiv 검색에 적합한 영어 키워드/짧은 구문 정확히 {count}개로 바꿔줘.
 각 키워드는 arXiv 논문 제목/초록에 실제로 등장할 법한 구체적인 기술/방법/분야 용어여야 해
 (예: "reinforcement learning", "diffusion model", "graph neural network").
 너무 포괄적이거나(예: "AI", "deep learning") 너무 좁은 표현은 피해줘."""
 
     result = _generate_json(prompt, schema)
-    keywords = result.get("keywords", [])[:NUM_SEARCH_KEYWORDS]
+    keywords = result.get("keywords", [])[:count]
     if not keywords:
         raise RuntimeError("Gemini가 검색 키워드를 반환하지 않았어요.")
     return keywords
@@ -246,16 +251,20 @@ def generate_curriculum(target_label, target_description, context_chunks, intere
     context_chunks: context_providers가 골라낸 근거 발췌문. 비어 있으면(RAG 없이)
     Gemini의 사전 지식만으로 만들라고 명시적으로 안내한다 — RAG on/off를 프롬프트
     레벨에서도 명확히 구분하는 것.
-    반환: {"nodes": [{"id","title","description","concepts":[str,...],"is_target":bool}],
-           "edges": [{"from","to"}]} (사이클 검증은 curriculum_service가 한다)
+    반환: {"nodes": [{"id","title","description","learning_points":[str,...],
+           "concepts":[str,...],"is_target":bool}], "edges": [{"from","to"}]}
+    (사이클 검증은 curriculum_service가 한다)
     """
     known_keywords = known_keywords or []
     known_keywords_text = ", ".join(kw["name"] for kw in known_keywords) if known_keywords else "(해당 없음)"
 
     if context_chunks:
-        excerpts = "\n\n".join(f"[발췌 {i + 1}]\n{chunk}" for i, chunk in enumerate(context_chunks))
-        context_section = f"""아래는 이 주제와 관련해 실제로 찾은 참고 자료 발췌문이야. description을 쓸 때
-가능하면 여기 내용에 근거해서 구체적으로 써줘:
+        excerpts = "\n\n".join(f"[발췌 {i + 1}] {chunk}" for i, chunk in enumerate(context_chunks))
+        context_section = f"""아래는 이 주제와 관련해 실제로 찾은 참고 자료 발췌문이야. 각 발췌 앞에는 출처가
+대괄호로 표시되어 있어(예: [arXiv 논문 "..."], [D2L 교재], [이 논문 PDF 원문]).
+description/learning_points를 쓸 때 이 발췌 내용에 최대한 구체적으로 근거하고,
+"D2L 교재에서는 ~라고 설명한다", "OOO 논문에서는 ~를 제안했다"처럼 출처를 자연스럽게
+녹여서 언급해줘 (일반론 말고 실제로 이 발췌에 쓰여 있는 내용으로):
 ---
 {excerpts}
 ---"""
@@ -276,15 +285,21 @@ def generate_curriculum(target_label, target_description, context_chunks, intere
                         "id": {"type": "string"},
                         "title": {"type": "string"},
                         "description": {"type": "string"},
+                        "learning_points": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "minItems": 2,
+                            "maxItems": 4,
+                        },
                         "concepts": {
                             "type": "array",
                             "items": {"type": "string"},
                             "minItems": 1,
-                            "maxItems": 4,
+                            "maxItems": 5,
                         },
                         "is_target": {"type": "boolean"},
                     },
-                    "required": ["id", "title", "description", "concepts", "is_target"],
+                    "required": ["id", "title", "description", "learning_points", "concepts", "is_target"],
                 },
                 "minItems": 4,
                 "maxItems": 14,
@@ -326,9 +341,18 @@ def generate_curriculum(target_label, target_description, context_chunks, intere
   (예: "선형대수"와 "확률/통계"는 서로 의존하지 않고 둘 다 다른 노드의 선수 조건일 수 있어).
 - edges의 from/to는 반드시 nodes에 있는 id를 정확히 사용해. from은 "먼저 배워야 하는
   노드", to는 "그다음에 배우는 노드"야. 사이클(순환 참조)이 생기면 안 돼.
-- 각 노드는 id(짧고 고유한 문자열, 예: "n1"), title(짧은 제목),
-  description(1~2문장 설명 — 왜 필요한지, 컨텍스트가 있으면 구체적으로),
-  concepts(이 노드에서 알아야 할 키워드 1~4개)를 가져야 해.
+- 각 노드는 다음을 가져야 해:
+  - id(짧고 고유한 문자열, 예: "n1"), title(짧은 제목)
+  - description: **3~6문장의 자세한 설명**. (1) 이 개념이 정확히 무엇인지,
+    (2) 왜 이 순서에 있는지(선수 노드와 어떻게 연결되고, 다음 노드를 이해하는 데
+    구체적으로 뭘 준비시켜주는지), (3) 참고 자료 발췌가 있으면 거기 있는 구체적인
+    내용(수식, 용어, 논문 제목 등)을 실제로 언급. 뭉뚱그린 일반론(예: "이건 중요한
+    개념입니다") 말고, 그 발췌에만 있는 디테일로 채워줘.
+  - learning_points: 이 노드에서 **실제로 할 수 있어야 하는 것/이해해야 하는 것**을
+    2~4개의 짧고 구체적인 항목으로. "OOO을 이해한다" 같은 뭉뚱그린 문장 말고
+    "쿼리·키·값 벡터의 내적으로 어텐션 가중치를 계산하는 과정을 손으로 따라갈 수
+    있다"처럼 행동 가능한(actionable) 문장으로 써줘.
+  - concepts(이 노드와 관련된 핵심 키워드 1~5개)
 - concepts는 짧고 구체적으로: 기술/아키텍처/메커니즘 용어는 영어로, 수학 개념은
   한국어로 표기해줘."""
 
@@ -336,3 +360,132 @@ def generate_curriculum(target_label, target_description, context_chunks, intere
     if not result.get("nodes"):
         raise RuntimeError("Gemini가 커리큘럼을 반환하지 않았어요.")
     return result
+
+
+def explain_concept(target_label, node_title, node_description, context_chunks, known_keywords=None):
+    """커리큘럼 노드 하나를 사용자가 "더 자세히 설명해줘"라고 요청했을 때 쓴다.
+    커리큘럼 생성 때는 노드 하나당 3~6문장이 전부였는데, 여기서는 그 노드 하나에만
+    집중해서 훨씬 깊게(여러 단락) 들어간다. 결과는 curriculum_store에 캐싱되므로
+    같은 노드에 대해 이 함수가 두 번 불릴 일은 없다(버튼을 다시 눌러도 저장된 걸 보여줌).
+    """
+    known_keywords = known_keywords or []
+    known_keywords_text = ", ".join(kw["name"] for kw in known_keywords) if known_keywords else "(해당 없음)"
+
+    if context_chunks:
+        excerpts = "\n\n".join(f"[발췌 {i + 1}] {chunk}" for i, chunk in enumerate(context_chunks))
+        context_section = f"""아래는 이 개념과 관련해 실제로 찾은 참고 자료 발췌문이야. 설명에 최대한
+구체적으로 반영해줘(출처가 태그로 표시되어 있으면 자연스럽게 인용해도 좋아):
+---
+{excerpts}
+---"""
+    else:
+        context_section = "참고 자료 없이, 네가 알고 있는 지식만으로 작성해줘."
+
+    schema = {
+        "type": "object",
+        "properties": {"explanation": {"type": "string"}},
+        "required": ["explanation"],
+    }
+
+    prompt = f"""너는 AI/ML 개념을 깊이 있게 설명하는 튜터야. 학습자는 지금 "{target_label}"을
+이해하기 위한 커리큘럼을 따라가는 중이고, 그중 "{node_title}"이라는 단계에서 "더 자세히
+설명해줘"라고 요청했어.
+
+지금까지 이 단계에 붙어있던 짧은 설명:
+---
+{node_description}
+---
+
+{context_section}
+
+참고 지식 베이스 (해당되면 이 표기를 우선 써줘): {known_keywords_text}
+
+위 짧은 설명보다 **훨씬 깊고 구체적인** 설명을 만들어줘 (한국어, 4~8문장 또는 여러
+짧은 단락):
+- 이 개념을 실제로 이해했다고 할 수 있으려면 무엇을 알아야 하는지 구체적으로.
+- 가능하면 구체적인 예시, 수식, 비유 중 하나 이상을 포함해줘.
+- 흔히 헷갈리거나 오해하는 지점이 있다면 짚어줘.
+- 참고 자료가 있다면 그 내용을 일반론이 아니라 실제로 인용/반영해줘."""
+
+    result = _generate_json(prompt, schema)
+    explanation = result.get("explanation", "").strip()
+    if not explanation:
+        raise RuntimeError("Gemini가 설명을 반환하지 않았어요.")
+    return explanation
+
+
+def generate_quiz(target_label, node_title, node_description, context_chunks, known_keywords=None):
+    """커리큘럼 노드 하나에 대한 이해도 확인 퀴즈(객관식 3~5문제)를 만든다.
+    "학습 완료" 버튼이 자기 신고제라 실제 이해를 검증할 방법이 없다는 문제를 풀기 위한
+    기능 — explain_concept과 같은 패턴으로 그 노드 제목에 집중한 RAG 근거를 쓰고,
+    결과는 curriculum_store에 캐싱돼서 같은 노드에 대해 두 번 생성되지 않는다.
+    """
+    known_keywords = known_keywords or []
+    known_keywords_text = ", ".join(kw["name"] for kw in known_keywords) if known_keywords else "(해당 없음)"
+
+    if context_chunks:
+        excerpts = "\n\n".join(f"[발췌 {i + 1}] {chunk}" for i, chunk in enumerate(context_chunks))
+        context_section = f"""아래는 이 개념과 관련해 실제로 찾은 참고 자료 발췌문이야. 문제를 낼 때
+가능하면 이 내용에 근거해서 구체적으로 만들어줘:
+---
+{excerpts}
+---"""
+    else:
+        context_section = "참고 자료 없이, 네가 알고 있는 지식만으로 작성해줘."
+
+    schema = {
+        "type": "object",
+        "properties": {
+            "questions": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "question": {"type": "string"},
+                        "options": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "minItems": 4,
+                            "maxItems": 4,
+                        },
+                        "correct_index": {"type": "integer"},
+                        "explanation": {"type": "string"},
+                    },
+                    "required": ["question", "options", "correct_index", "explanation"],
+                },
+                "minItems": 3,
+                "maxItems": 5,
+            }
+        },
+        "required": ["questions"],
+    }
+
+    prompt = f"""너는 AI/ML 개념의 이해도를 확인하는 퀴즈를 만드는 출제자야. 학습자는 "{target_label}"을
+이해하기 위한 커리큘럼을 따라가는 중이고, 그중 "{node_title}"이라는 단계를 "학습 완료"로
+표시하기 전에 실제로 이해했는지 확인하고 싶어해.
+
+이 단계에 붙어있는 설명:
+---
+{node_description}
+---
+
+{context_section}
+
+참고 지식 베이스 (해당되면 문제/보기에 이 표기를 우선 써줘): {known_keywords_text}
+
+"{node_title}"에 대한 4지선다 객관식 퀴즈를 3~5문제 만들어줘.
+- 단순 암기(정의를 그대로 물어보는 것)보다는, 계산해보기/적용하기/비교하기처럼 실제로
+  이해해야 풀 수 있는 문제 위주로 만들어줘.
+- options는 정확히 4개, 그럴듯한 오답(흔히 헷갈리는 지점)을 포함해줘.
+- correct_index는 0부터 시작하는 정답 인덱스(0~3).
+- explanation은 정답인 이유(및 왜 다른 보기들이 틀렸는지)를 1~2문장으로.
+- 참고 자료가 있다면 그 내용을 실제로 반영한 구체적인 문제를 만들어줘."""
+
+    result = _generate_json(prompt, schema)
+    questions = result.get("questions", [])
+    # correct_index가 범위를 벗어나는 등 LLM이 스키마를 지켜도 내용이 이상할 수 있어서
+    # 방어적으로 걸러낸다 — 잘못된 문제를 하나 버리는 게 퀴즈 전체를 실패시키는 것보다 낫다.
+    valid_questions = [q for q in questions if 0 <= q.get("correct_index", -1) < len(q.get("options", []))]
+    if not valid_questions:
+        raise RuntimeError("Gemini가 유효한 퀴즈를 반환하지 않았어요.")
+    return valid_questions

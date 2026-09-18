@@ -180,6 +180,12 @@ body {
   margin-bottom: 8px;
 }
 
+.field-hint {
+  font-weight: 400;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
 #interest-input,
 #count-input,
 #keyword-curriculum-input {
@@ -230,6 +236,56 @@ body {
   background: var(--chip-bg-active);
   color: var(--chip-text-active);
   border-color: transparent;
+}
+
+.chip-custom {
+  font-weight: 700;
+}
+
+.chip-add-wrap {
+  display: inline-flex;
+  align-items: center;
+}
+
+.chip-add-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1.5px dashed var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.chip-add-btn:hover {
+  border-style: solid;
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.chip-add-input {
+  width: 160px;
+  height: 30px;
+  padding: 0 13px;
+  border-radius: 999px;
+  border: 1.5px solid var(--accent);
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.85rem;
+}
+
+.chip-add-input:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 .submit-btn {
@@ -554,6 +610,145 @@ body {
 
 .curriculum-detail p {
   margin: 0 0 10px;
+  line-height: 1.6;
+}
+
+.curriculum-detail-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 6px;
+}
+
+.curriculum-learning-points {
+  margin: 0 0 14px;
+  padding-left: 20px;
+}
+
+.curriculum-learning-points li {
+  margin-bottom: 4px;
+  line-height: 1.5;
+}
+
+.curriculum-detail-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.curriculum-action-btn {
+  align-self: flex-start;
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 7px 13px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.curriculum-action-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.curriculum-action-btn:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.curriculum-action-btn-done {
+  border-color: transparent;
+  background: #16a34a;
+  color: #fff;
+}
+
+.curriculum-action-btn-done:hover:not(:disabled) {
+  color: #fff;
+  border-color: transparent;
+  filter: brightness(1.08);
+}
+
+.curriculum-explain-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.curriculum-explain-text {
+  margin: 0;
+  line-height: 1.6;
+  white-space: pre-line;
+}
+
+/* 진행률 바 */
+.curriculum-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.curriculum-progress-bar {
+  flex: 1;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--chip-bg);
+  overflow: hidden;
+}
+
+.curriculum-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+  transition: width 0.2s ease;
+}
+
+.curriculum-progress-complete .curriculum-progress-fill {
+  background: #16a34a;
+}
+
+.curriculum-progress-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* 노드 완료 체크 배지 (그래프 안, 기본은 숨김) */
+.curriculum-node-badge {
+  opacity: 0;
+  transform: scale(0.7);
+  transform-origin: calc(100% - 12px) 12px;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.curriculum-node-badge circle {
+  fill: #16a34a;
+}
+
+.curriculum-node-check {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.curriculum-node-completed .curriculum-node-badge {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.curriculum-node-completed rect {
+  stroke: #16a34a;
 }
 
 .tag.tag-neutral { background: var(--chip-bg); color: var(--text-muted); }
@@ -619,4 +814,82 @@ body {
   color: var(--text-muted);
   font-size: 0.8rem;
   margin-top: 36px;
+}
+
+/* "내 커리큘럼" 탭 */
+.library-list {
+  display: grid;
+  gap: 10px;
+}
+
+.library-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+}
+
+.library-row-main {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  background: none;
+  border: none;
+  font-family: inherit;
+  color: var(--text);
+  cursor: pointer;
+  padding: 14px 16px;
+  display: grid;
+  gap: 6px;
+}
+
+.library-row-title {
+  font-weight: 700;
+  font-size: 0.95rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.library-row-meta {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.library-row-bar {
+  height: 5px;
+  border-radius: 999px;
+  background: var(--chip-bg);
+  overflow: hidden;
+}
+
+.library-row-bar-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+}
+
+.library-row-delete {
+  flex-shrink: 0;
+  margin-right: 12px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 0.75rem;
+  padding: 6px 11px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.library-row-delete:hover {
+  border-color: #dc2626;
+  color: #dc2626;
+}
+
+#library-detail-panel {
+  margin-top: 24px;
 }

@@ -22,6 +22,9 @@
       <button type="button" class="tab-btn" id="tab-btn-curriculum" role="tab" aria-controls="tab-panel-curriculum" aria-selected="false" data-tab="curriculum">
         <span class="tab-icon" aria-hidden="true">🧭</span> 커리큘럼
       </button>
+      <button type="button" class="tab-btn" id="tab-btn-library" role="tab" aria-controls="tab-panel-library" aria-selected="false" data-tab="library">
+        <span class="tab-icon" aria-hidden="true">📚</span> 내 커리큘럼
+      </button>
     </nav>
 
     <main>
@@ -29,14 +32,18 @@
         <section class="panel search-panel">
           <form id="search-form">
             <div class="field">
-              <label for="interest-input">관심 분야</label>
+              <label for="interest-input">관심 분야 (자연어)</label>
               <input
                 id="interest-input"
                 type="text"
                 placeholder="예: 로봇 제어를 강화학습으로 배우고 싶어요"
                 autocomplete="off"
               />
-              <div class="chip-row" id="topic-chips" aria-label="관심 키워드 선택 (여러 개 선택 가능)"></div>
+            </div>
+
+            <div class="field">
+              <label>관심 키워드 <span class="field-hint">(+ 버튼으로 직접 추가하면 AI가 다듬지 않고 그대로 검색해요)</span></label>
+              <div class="chip-row" id="topic-chips" aria-label="검색에 쓰일 키워드"></div>
             </div>
 
             <div class="field">
@@ -83,6 +90,18 @@
             <button type="submit" class="submit-btn" id="keyword-curriculum-submit-btn">커리큘럼 만들기</button>
           </form>
           <div id="keyword-curriculum-result"></div>
+        </section>
+      </div>
+
+      <div class="tab-panel" id="tab-panel-library" role="tabpanel" aria-labelledby="tab-btn-library" hidden>
+        <section class="panel">
+          <h2>내 커리큘럼</h2>
+          <p class="panel-sub">한 번 만든 커리큘럼은 저장돼요. 노드를 배웠으면 완료 표시를 하고, 더 자세한 설명도 AI에게 요청할 수 있어요.</p>
+          <div id="library-empty" class="empty-state">아직 만든 커리큘럼이 없어요. "커리큘럼" 탭이나 논문 카드에서 만들어보세요.</div>
+          <div id="library-list" class="library-list"></div>
+        </section>
+        <section class="panel" id="library-detail-panel" hidden>
+          <div id="library-detail"></div>
         </section>
       </div>
     </main>

@@ -61,10 +61,12 @@ def paper_pdf_provider(target):
 
     pdf_stream = pdf_service.download_pdf(pdf_url)
     text = pdf_service.extract_text(pdf_stream)
-    chunks = pdf_service.chunk_text(text)
+    # 출처 태그를 발췌 앞에 붙여둔다 — llm_service가 description/learning_points를
+    # "이 논문 원문에 따르면", "D2L 교재에서는" 처럼 구체적인 출처를 밝히며 쓸 수 있게 된다.
+    chunks = [f"[이 논문 PDF 원문] {c}" for c in pdf_service.chunk_text(text)]
 
     title = target.get("title", "").strip()
-    textbook_chunks = _textbook_chunks(title) if title else []
+    textbook_chunks = [f"[D2L 교재] {c}" for c in _textbook_chunks(title)] if title else []
 
     return _retrieve_relevant(chunks + textbook_chunks)
 
@@ -79,8 +81,10 @@ def keyword_provider(target):
         return []
 
     results = arxiv_service.search_candidates([keyword], pool_size=KEYWORD_CANDIDATE_PAPERS)
-    arxiv_chunks = [f"{r.title}\n{' '.join(r.summary.split())}" for r in results]
-    textbook_chunks = _textbook_chunks(keyword)
+    # 논문 제목까지 태그로 남겨서, LLM이 "OOO 논문에서는 ~라고 소개한다"처럼 구체적으로
+    # 인용할 수 있게 한다 (그냥 "참고 자료에 따르면"보다 훨씬 자세해진다).
+    arxiv_chunks = [f"[arXiv 논문 \"{r.title}\"] {' '.join(r.summary.split())}" for r in results]
+    textbook_chunks = [f"[D2L 교재] {c}" for c in _textbook_chunks(keyword)]
 
     return _retrieve_relevant(arxiv_chunks + textbook_chunks)
 

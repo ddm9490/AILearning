@@ -23,9 +23,14 @@ const keywordCurriculumInput = document.getElementById("keyword-curriculum-input
 const keywordCurriculumRagCheckbox = document.getElementById("keyword-curriculum-rag");
 const keywordCurriculumSubmitBtn = document.getElementById("keyword-curriculum-submit-btn");
 const keywordCurriculumResultEl = document.getElementById("keyword-curriculum-result");
+const libraryEmptyEl = document.getElementById("library-empty");
+const libraryListEl = document.getElementById("library-list");
+const libraryDetailPanelEl = document.getElementById("library-detail-panel");
+const libraryDetailEl = document.getElementById("library-detail");
 
 const state = {
   selectedKeywords: new Set(),
+  chipAddWrap: null,
 };
 
 async function postJSON(url, payload) {
@@ -43,6 +48,12 @@ async function postJSON(url, payload) {
 
 async function fetchJSON(url) {
   const res = await fetch(url);
+  if (!res.ok) throw new Error(`요청 실패: ${res.status}`);
+  return res.json();
+}
+
+async function deleteJSON(url) {
+  const res = await fetch(url, { method: "DELETE" });
   if (!res.ok) throw new Error(`요청 실패: ${res.status}`);
   return res.json();
 }
@@ -67,6 +78,84 @@ function toggleKeyword(keyword, chipEl) {
     state.selectedKeywords.add(keyword);
     chipEl.classList.add("active");
   }
+}
+
+// 사용자가 직접 입력한 키워드(예: "ConvNeXt")는 AI가 자연어 관심사를 검색어로
+// "번역"하는 과정을 거치지 않고 arXiv 검색어에 그대로 들어간다(app.py 참고) — 특정
+// 아키텍처/모델 이름을 AI가 엉뚱하게 해석해버리는 문제를 막기 위한 입력 경로.
+function addExactKeyword(rawKeyword) {
+  const keyword = rawKeyword.trim();
+  if (!keyword || state.selectedKeywords.has(keyword)) return;
+
+  state.selectedKeywords.add(keyword);
+
+  const chip = document.createElement("button");
+  chip.type = "button";
+  chip.className = "chip active chip-custom";
+  chip.textContent = `${keyword} ×`;
+  chip.title = "클릭하면 제거돼요";
+  chip.addEventListener("click", () => {
+    state.selectedKeywords.delete(keyword);
+    chip.remove();
+  });
+
+  // + 버튼(chipAddWrap)은 항상 칩 목록 맨 끝에 있어야 해서, 새 칩은 그 앞에 끼워 넣는다.
+  if (state.chipAddWrap) {
+    topicChipsEl.insertBefore(chip, state.chipAddWrap);
+  } else {
+    topicChipsEl.appendChild(chip);
+  }
+}
+
+// 동그란 "+" 버튼 -> 클릭하면 인라인 입력창으로 바뀌는 태그 추가 컨트롤.
+// Enter로 추가하고, 입력창은 열린 채로 유지해서 여러 개를 연달아 추가할 수 있다.
+// 빈 채로 Escape/포커스 아웃하면 다시 + 버튼으로 접힌다.
+function buildChipAddControl() {
+  const wrap = document.createElement("span");
+  wrap.className = "chip-add-wrap";
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "chip-add-btn";
+  button.textContent = "+";
+  button.setAttribute("aria-label", "키워드 직접 추가");
+
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "chip-add-input";
+  input.placeholder = "키워드 입력 후 Enter";
+  input.hidden = true;
+
+  const collapse = () => {
+    input.hidden = true;
+    input.value = "";
+    button.hidden = false;
+  };
+
+  const expand = () => {
+    button.hidden = true;
+    input.hidden = false;
+    input.focus();
+  };
+
+  button.addEventListener("click", expand);
+
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      addExactKeyword(input.value);
+      input.value = "";
+    } else if (event.key === "Escape") {
+      collapse();
+    }
+  });
+
+  input.addEventListener("blur", () => {
+    if (!input.value.trim()) collapse();
+  });
+
+  wrap.append(button, input);
+  return wrap;
 }
 
 function renderTierLegend(tiers) {
@@ -310,6 +399,55 @@ function nodePrimaryTier(node) {
   return tiers.length ? Math.min(...tiers) : null;
 }
 
+// 아직 완료 안 한 노드 중, 선수 노드(들어오는 간선의 from)가 전부 완료된 것들 —
+// "지금 바로 공부해도 되는" 노드 집합. 그래프/완료 상태만으로 계산되는 순수 함수라
+// LLM 호출이 전혀 없다(뼈대는 이미 DAG로 다 갖고 있으니 순회만 하면 됨).
+function computeUnlockedNodeIds(nodes, edges) {
+  const completedIds = new Set(nodes.filter((n) => n.completed).map((n) => n.id));
+  const prereqsByNode = new Map();
+  nodes.forEach((n) => prereqsByNode.set(n.id, []));
+  (edges || []).forEach((e) => {
+    if (prereqsByNode.has(e.to)) prereqsByNode.get(e.to).push(e.from);
+  });
+
+  const unlocked = new Set();
+  nodes.forEach((n) => {
+    if (completedIds.has(n.id)) return;
+    const prereqs = prereqsByNode.get(n.id) || [];
+    if (prereqs.every((p) => completedIds.has(p))) unlocked.add(n.id);
+  });
+  return unlocked;
+}
+
+// 완료된 노드 개수를 진행률 바 + 라벨로 보여준다. refresh()를 나중에도 다시 불러서
+// 완료 토글이 일어날 때마다 갱신할 수 있게 엘리먼트 참조를 클로저에 들고 있는다.
+function buildProgressSummary(nodes) {
+  const wrap = document.createElement("div");
+  wrap.className = "curriculum-progress";
+
+  const bar = document.createElement("div");
+  bar.className = "curriculum-progress-bar";
+  const fill = document.createElement("div");
+  fill.className = "curriculum-progress-fill";
+  bar.appendChild(fill);
+
+  const label = document.createElement("span");
+  label.className = "curriculum-progress-label";
+
+  const refresh = () => {
+    const total = nodes.length;
+    const completed = nodes.filter((n) => n.completed).length;
+    const pct = total ? Math.round((completed / total) * 100) : 0;
+    fill.style.width = `${pct}%`;
+    label.textContent = `${completed} / ${total} 완료`;
+    wrap.classList.toggle("curriculum-progress-complete", total > 0 && completed === total);
+  };
+  refresh();
+
+  wrap.append(bar, label);
+  return { el: wrap, refresh };
+}
+
 function renderCurriculumGraph(container, data) {
   container.innerHTML = "";
 
@@ -327,6 +465,9 @@ function renderCurriculumGraph(container, data) {
     ? "관련 자료를 찾아 근거로 삼아 만들었어요 (RAG)."
     : "AI의 사전 지식만으로 만들었어요 (RAG 미사용).";
   container.appendChild(banner);
+
+  const progress = buildProgressSummary(data.nodes);
+  container.appendChild(progress.el);
 
   const { positions, width, height } = layoutCurriculumGraph(data.nodes);
 
@@ -371,6 +512,8 @@ function renderCurriculumGraph(container, data) {
   detailPanel.className = "curriculum-detail";
   detailPanel.textContent = "노드를 클릭하면 자세한 설명이 여기 나와요.";
 
+  const nodeContext = { curriculumId: data.id, refreshProgress: progress.refresh };
+
   const nodesGroup = createSvgEl("g", { class: "curriculum-nodes" });
   data.nodes.forEach((node) => {
     const pos = positions.get(node.id);
@@ -380,6 +523,7 @@ function renderCurriculumGraph(container, data) {
     const classes = ["curriculum-node"];
     if (node.is_target) classes.push("curriculum-node-target");
     if (tier !== null) classes.push(`tier-${tier}`);
+    if (node.completed) classes.push("curriculum-node-completed");
 
     const g = createSvgEl("g", {
       class: classes.join(" "),
@@ -396,17 +540,28 @@ function renderCurriculumGraph(container, data) {
     foreignObject.appendChild(body);
     g.appendChild(foreignObject);
 
+    // 완료 체크 배지: 항상 DOM엔 있고, .curriculum-node-completed일 때만 CSS로 보여준다
+    // (완료 토글 때마다 새로 만들지 않고 클래스만 바꾸면 되도록).
+    const badge = createSvgEl("g", { class: "curriculum-node-badge" });
+    badge.appendChild(createSvgEl("circle", { cx: GRAPH_NODE_WIDTH - 12, cy: 12, r: 10 }));
+    const check = createSvgEl("path", {
+      d: `M ${GRAPH_NODE_WIDTH - 17} 12 l 4 4 l 7 -8`,
+      class: "curriculum-node-check",
+    });
+    badge.appendChild(check);
+    g.appendChild(badge);
+
     const highlightEdges = (on) => {
       const selector = `[data-from="${CSS.escape(node.id)}"], [data-to="${CSS.escape(node.id)}"]`;
       edgesGroup.querySelectorAll(selector).forEach((p) => p.classList.toggle("curriculum-edge-active", on));
     };
     g.addEventListener("mouseenter", () => highlightEdges(true));
     g.addEventListener("mouseleave", () => highlightEdges(false));
-    g.addEventListener("click", () => showCurriculumDetail(detailPanel, node));
+    g.addEventListener("click", () => showCurriculumDetail(detailPanel, node, nodeContext, g));
     g.addEventListener("keydown", (event) => {
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
-        showCurriculumDetail(detailPanel, node);
+        showCurriculumDetail(detailPanel, node, nodeContext, g);
       }
     });
 
@@ -418,16 +573,216 @@ function renderCurriculumGraph(container, data) {
   container.append(graphWrap, detailPanel);
 }
 
-function showCurriculumDetail(panel, node) {
+// panel: 설명을 그릴 컨테이너. node: 클릭된 노드 데이터(완료 상태를 여기 직접 mutate함).
+// context: {curriculumId, refreshProgress}. nodeGroupEl: 이 노드의 SVG <g> (완료 시각
+// 효과를 클래스 토글로 바로 반영하기 위함).
+function showCurriculumDetail(panel, node, context, nodeGroupEl) {
   panel.innerHTML = "";
 
   const title = document.createElement("h4");
   title.textContent = node.is_target ? `${node.title} (최종 목표)` : node.title;
+  panel.appendChild(title);
 
   const desc = document.createElement("p");
   desc.textContent = node.description;
+  panel.appendChild(desc);
 
-  panel.append(title, desc, buildTagRow(node.concepts));
+  if (node.learning_points && node.learning_points.length) {
+    const label = document.createElement("div");
+    label.className = "curriculum-detail-label";
+    label.textContent = "이 단계에서 할 수 있어야 하는 것";
+    panel.appendChild(label);
+
+    const list = document.createElement("ul");
+    list.className = "curriculum-learning-points";
+    node.learning_points.forEach((point) => {
+      const li = document.createElement("li");
+      li.textContent = point;
+      list.appendChild(li);
+    });
+    panel.appendChild(list);
+  }
+
+  panel.appendChild(buildTagRow(node.concepts));
+
+  const actions = document.createElement("div");
+  actions.className = "curriculum-detail-actions";
+
+  if (context && context.curriculumId) {
+    actions.appendChild(buildCompleteToggleButton(node, context, nodeGroupEl));
+    actions.appendChild(buildExplainSection(node, context));
+  }
+
+  panel.appendChild(actions);
+}
+
+function buildCompleteToggleButton(node, context, nodeGroupEl) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "curriculum-action-btn";
+
+  const setLabel = () => {
+    button.textContent = node.completed ? "✓ 완료함 (취소하려면 클릭)" : "학습 완료로 표시";
+    button.classList.toggle("curriculum-action-btn-done", node.completed);
+  };
+  setLabel();
+
+  button.addEventListener("click", async () => {
+    const nextState = !node.completed;
+    button.disabled = true;
+    try {
+      await postJSON(`/api/curriculum/${context.curriculumId}/nodes/${node.id}/complete`, {
+        completed: nextState,
+      });
+      node.completed = nextState;
+      setLabel();
+      if (nodeGroupEl) nodeGroupEl.classList.toggle("curriculum-node-completed", nextState);
+      if (context.refreshProgress) context.refreshProgress();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      button.disabled = false;
+    }
+  });
+
+  return button;
+}
+
+function buildExplainSection(node, context) {
+  const wrap = document.createElement("div");
+  wrap.className = "curriculum-explain-wrap";
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "curriculum-action-btn";
+  button.textContent = "AI에게 더 자세히 설명 요청";
+
+  const textEl = document.createElement("p");
+  textEl.className = "curriculum-explain-text";
+
+  if (node.ai_explanation) {
+    textEl.textContent = node.ai_explanation;
+    button.hidden = true;
+  } else {
+    textEl.hidden = true;
+  }
+
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    const originalText = button.textContent;
+    button.textContent = "AI가 설명을 만드는 중... (최대 1분 정도 걸려요)";
+    try {
+      const data = await postJSON(`/api/curriculum/${context.curriculumId}/nodes/${node.id}/explain`, {});
+      node.ai_explanation = data.explanation;
+      textEl.textContent = data.explanation;
+      textEl.hidden = false;
+      button.hidden = true;
+    } catch (err) {
+      textEl.textContent = err.message || "설명을 가져오지 못했어요.";
+      textEl.hidden = false;
+      button.disabled = false;
+      button.textContent = originalText;
+    }
+  });
+
+  wrap.append(button, textEl);
+  return wrap;
+}
+
+const TARGET_TYPE_ICON = { paper: "📄", keyword: "🧭" };
+
+function formatCreatedAt(unixSeconds) {
+  return new Date(unixSeconds * 1000).toLocaleString("ko-KR", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+async function renderLibraryList() {
+  libraryListEl.innerHTML = "";
+  libraryDetailPanelEl.hidden = true;
+
+  let items;
+  try {
+    items = await fetchJSON("/api/curricula");
+  } catch (err) {
+    libraryEmptyEl.textContent = "커리큘럼 목록을 불러오지 못했어요.";
+    libraryEmptyEl.style.display = "block";
+    return;
+  }
+
+  if (!items.length) {
+    libraryEmptyEl.style.display = "block";
+    return;
+  }
+  libraryEmptyEl.style.display = "none";
+
+  items.forEach((item) => {
+    libraryListEl.appendChild(buildLibraryRow(item));
+  });
+}
+
+function buildLibraryRow(item) {
+  const row = document.createElement("div");
+  row.className = "library-row";
+
+  const main = document.createElement("button");
+  main.type = "button";
+  main.className = "library-row-main";
+
+  const titleLine = document.createElement("div");
+  titleLine.className = "library-row-title";
+  titleLine.textContent = `${TARGET_TYPE_ICON[item.target_type] || "🧭"} ${item.target_label}`;
+
+  const metaLine = document.createElement("div");
+  metaLine.className = "library-row-meta";
+  const pct = item.total_nodes ? Math.round((item.completed_nodes / item.total_nodes) * 100) : 0;
+  metaLine.textContent = `${formatCreatedAt(item.created_at)} · ${item.completed_nodes} / ${item.total_nodes} 완료`;
+
+  const miniBar = document.createElement("div");
+  miniBar.className = "library-row-bar";
+  const miniFill = document.createElement("div");
+  miniFill.className = "library-row-bar-fill";
+  miniFill.style.width = `${pct}%`;
+  miniBar.appendChild(miniFill);
+
+  main.append(titleLine, metaLine, miniBar);
+  main.addEventListener("click", () => openLibraryCurriculum(item.id));
+
+  const deleteBtn = document.createElement("button");
+  deleteBtn.type = "button";
+  deleteBtn.className = "library-row-delete";
+  deleteBtn.textContent = "삭제";
+  deleteBtn.title = "이 커리큘럼 삭제";
+  deleteBtn.addEventListener("click", async (event) => {
+    event.stopPropagation();
+    if (!confirm(`"${item.target_label}" 커리큘럼을 삭제할까요?`)) return;
+    try {
+      await deleteJSON(`/api/curriculum/${item.id}`);
+      renderLibraryList();
+    } catch (err) {
+      alert(err.message || "삭제하지 못했어요.");
+    }
+  });
+
+  row.append(main, deleteBtn);
+  return row;
+}
+
+async function openLibraryCurriculum(curriculumId) {
+  libraryDetailEl.innerHTML = "불러오는 중...";
+  libraryDetailPanelEl.hidden = false;
+  libraryDetailPanelEl.scrollIntoView({ behavior: "smooth", block: "start" });
+
+  try {
+    const data = await fetchJSON(`/api/curriculum/${curriculumId}`);
+    renderCurriculumGraph(libraryDetailEl, data);
+  } catch (err) {
+    libraryDetailEl.textContent = err.message || "커리큘럼을 불러오지 못했어요.";
+  }
 }
 
 function setLoading(isLoading) {
@@ -517,6 +872,7 @@ function initTabs() {
       tabPanels.forEach((panel) => {
         panel.hidden = panel.id !== `tab-panel-${target}`;
       });
+      if (target === "library") renderLibraryList();
     });
   });
 }
@@ -527,6 +883,8 @@ async function init() {
   initTabs();
 
   renderSuggestedKeywords();
+  state.chipAddWrap = buildChipAddControl();
+  topicChipsEl.appendChild(state.chipAddWrap);
 
   const tiers = await fetchJSON("/api/tiers");
   renderTierLegend(tiers);
