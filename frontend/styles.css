@@ -10,10 +10,26 @@
   --accent-soft: #eef0ff;
   --accent-contrast: #ffffff;
   --accent-shadow: rgba(79, 70, 229, 0.24);
+  /* 버튼처럼 "칠해진 배경 위에 글자를 얹는" 자리 전용 토큰. 라이트 모드는 accent 자체가
+     이미 충분히 진해서 accent를 그대로 쓰면 되지만, 다크 모드는 --accent가 텍스트/테두리용
+     밝은 보라라 배경으로 쓰면 흰 글자와도 검은 글자와도 선명하게 안 어울려서 따로 뺐다. */
+  --accent-solid: var(--accent);
+  --accent-solid-hover: var(--accent-hover);
+  --accent-solid-text: var(--accent-contrast);
   --chip-bg: #eef0f8;
   --chip-bg-active: #4f46e5;
   --chip-text-active: #ffffff;
   --link: #4f46e5;
+  /* 커리큘럼 노드 상세의 세 액션 버튼(완료/설명/퀴즈)용 색 — 전부 보라색이면 구분이
+     안 되고, 전부 accent를 쓰면 페이지 전체에 보라색이 과해져서 각각 다른 톤으로
+     나눴다. tier-1(연산/기법, 초록)·tier-2(레이어/학습, 파랑)·tier-4(아키텍처, 주황)
+     톤을 그대로 빌려썼다 — 태그와 뜻이 겹치진 않지만 이미 검증된 배색이라 재사용. */
+  --action-complete-bg: var(--tier-1-bg);
+  --action-complete-text: var(--tier-1-text);
+  --action-explain-bg: var(--tier-2-bg);
+  --action-explain-text: var(--tier-2-text);
+  --action-quiz-bg: var(--tier-4-bg);
+  --action-quiz-text: var(--tier-4-text);
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 18px;
@@ -53,10 +69,26 @@
     --accent-soft: #23213f;
     --accent-contrast: #12121a;
     --accent-shadow: rgba(139, 131, 246, 0.32);
+    /* 제출 버튼/선택된 칩처럼 "칠해진 배경"에는 --accent(#8b83f6, 밝은 보라)를 그대로
+       안 쓴다 — 검은 글자(#12121a)를 얹으면 흐릿하게 뭉개져 보이고(실측 대비 5.9:1로
+       수치상 기준은 넘지만 톤 자체가 밝은 파스텔이라 체감 선명도가 떨어짐), 그렇다고
+       흰 글자를 얹으면 대비가 오히려 더 떨어진다(3.15:1, 기준 미달). accent보다 더
+       진하고 채도 높은 인디고(Tailwind indigo-500/600 톤)를 배경으로 쓰면 흰 글자와
+       선명하게 대비되면서도(4.65:1) 여전히 "보라색"으로 읽힌다. --accent 자체(텍스트/
+       테두리/포커스링용)는 다크 배경 위 텍스트로는 이미 잘 보여서 그대로 둔다.*/
+    --accent-solid: #6366f1;
+    --accent-solid-hover: #4f46e5;
+    --accent-solid-text: #ffffff;
     --chip-bg: #26263380;
-    --chip-bg-active: #8b83f6;
-    --chip-text-active: #12121a;
+    --chip-bg-active: #6366f1;
+    --chip-text-active: #ffffff;
     --link: #a39cf8;
+    --action-complete-bg: var(--tier-1-bg);
+    --action-complete-text: var(--tier-1-text);
+    --action-explain-bg: var(--tier-2-bg);
+    --action-explain-text: var(--tier-2-text);
+    --action-quiz-bg: var(--tier-4-bg);
+    --action-quiz-text: var(--tier-4-text);
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 6px rgba(0, 0, 0, 0.2);
     --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.3), 0 12px 30px rgba(0, 0, 0, 0.4);
 
@@ -87,11 +119,51 @@
 
 body {
   margin: 0;
-  background: var(--bg);
+  /* 은은한 그라데이션 — 위쪽 모서리 두 군데에서 accent 톤이 옅게 번지다가
+     기본 배경색으로 자연스럽게 사라진다. 패널/카드는 전부 불투명한 --surface라
+     그 위를 그냥 덮어서, 실제로는 패널 사이 여백에서만 살짝 보인다. */
+  background:
+    radial-gradient(1100px circle at 12% -8%, var(--accent-soft) 0%, transparent 50%),
+    radial-gradient(900px circle at 100% 0%, var(--accent-soft) 0%, transparent 42%),
+    var(--bg);
+  background-attachment: fixed;
   color: var(--text);
   font-family: "Pretendard Variable", "Pretendard", "Apple SD Gothic Neo", "Segoe UI", system-ui, sans-serif;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+}
+
+.topbar {
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.topbar-inner {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 14px 24px;
+}
+
+.topbar-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.topbar-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: var(--accent-solid);
+  color: var(--accent-solid-text);
+  font-size: 0.85rem;
 }
 
 .page {
@@ -115,7 +187,7 @@ body {
 .hero-sub {
   color: var(--text-muted);
   margin: 0 auto;
-  max-width: 42em;
+  max-width: 60em;
   font-size: 0.98rem;
   line-height: 1.6;
 }
@@ -240,9 +312,13 @@ body {
   color: var(--accent);
 }
 
+/* 선택된 키워드 칩은 AI 추천받기 버튼(--accent-solid, 진한 단색 채움)처럼 꽉 찬
+   원색이 아니라, 연한 배경 + 진한 글자로 "선택됨"을 표시한다 — 버튼과 같은 강도로
+   칠하면 페이지 전체에 진한 보라색이 너무 많아지고, 정작 진짜 액션 버튼(제출/저장)이
+   덜 도드라져 보였다. */
 .chip.active {
-  background: var(--chip-bg-active);
-  color: var(--chip-text-active);
+  background: var(--accent-soft);
+  color: var(--accent);
   border-color: transparent;
 }
 
@@ -301,18 +377,21 @@ body {
   padding: 13px;
   border: none;
   border-radius: var(--radius-sm);
-  background: var(--accent);
-  color: var(--accent-contrast);
+  /* 그라데이션은 background-image라 background 트랜지션으로는 부드럽게 안 바뀌어서
+     (브라우저가 두 그라데이션 사이를 보간 못 하고 그냥 툭 바뀜), 그라데이션 자체는
+     고정해두고 hover는 filter(brightness)로 밝기만 부드럽게 바꾼다. */
+  background: linear-gradient(135deg, var(--accent-solid), var(--accent-solid-hover));
+  color: var(--accent-solid-text);
   font-family: inherit;
   font-size: 1rem;
   font-weight: 700;
   cursor: pointer;
   box-shadow: 0 6px 16px -4px var(--accent-shadow);
-  transition: background 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
+  transition: filter 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
 }
 
 .submit-btn:hover:not(:disabled) {
-  background: var(--accent-hover);
+  filter: brightness(1.08);
   transform: translateY(-1px);
   box-shadow: 0 8px 20px -4px var(--accent-shadow);
 }
@@ -418,14 +497,28 @@ body {
 }
 
 .paper-summary {
-  margin: 0 0 12px;
+  margin: 10px 0 0;
   font-size: 0.92rem;
   line-height: 1.6;
   color: var(--text);
 }
 
+.paper-summary[hidden] {
+  display: none;
+}
+
+/* 저자/연도 줄(.paper-meta)이랑 색/크기가 비슷해서 여백이 부족하면 두 영역이
+   헷갈려 보였다 — 여기서 위쪽 간격을 확실히 벌리고, 개별 .keyword-group은
+   margin을 안 갖게 해서 2단 그리드일 때 두 칸의 위 끝이 정확히 맞도록 한다. */
+.keyword-groups-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px 20px;
+  margin-top: 18px;
+}
+
 .keyword-group {
-  margin-top: 10px;
+  margin-top: 0;
 }
 
 .keyword-group-label {
@@ -454,6 +547,12 @@ body {
   margin-top: 14px;
   padding-top: 14px;
   border-top: 1px solid var(--border);
+}
+
+.curriculum-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .curriculum-btn {
@@ -486,6 +585,24 @@ body {
 .curriculum-error {
   color: var(--text-muted);
   font-size: 0.85rem;
+}
+
+.curriculum-preview-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+  padding: 10px 14px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+}
+
+.curriculum-preview-note {
+  font-size: 0.82rem;
+  color: var(--text-muted);
 }
 
 .curriculum-panel .panel-sub {
@@ -621,6 +738,10 @@ body {
 .curriculum-detail p {
   margin: 0 0 10px;
   line-height: 1.6;
+  /* .curriculum-detail 기본 색(--text-muted, 흐린 회색)을 그대로 물려받으면 본문
+     설명처럼 긴 글이 잘 안 보인다 — 흐린 회색은 --curriculum-detail-label 같은
+     보조 라벨용이고, 실제로 읽어야 하는 본문은 --text(밝은 색)로 따로 지정한다. */
+  color: var(--text);
 }
 
 .curriculum-detail-label {
@@ -640,13 +761,14 @@ body {
 .curriculum-learning-points li {
   margin-bottom: 4px;
   line-height: 1.5;
+  color: var(--text);
 }
 
 .curriculum-detail-actions {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
   gap: 10px;
-  margin-top: 4px;
+  margin-top: 18px;
 }
 
 .curriculum-action-btn {
@@ -673,6 +795,44 @@ body {
   cursor: wait;
 }
 
+/* 세 버튼(완료/설명/퀴즈)이 전부 같은 회색이면 구분이 안 되고, 그렇다고 셋 다
+   보라색으로 칠하면 페이지에 보라색이 너무 많아진다는 피드백을 받아서 각각 다른
+   색으로 나눴다. "완료 전" 상태는 연한 톤(아직 안 끝났음을 은은하게 표시)이고,
+   실제로 완료 처리하면 진한 초록(--curriculum-action-btn-done, 기존 그대로)으로
+   확실하게 바뀐다. */
+.curriculum-action-btn-complete {
+  border-color: transparent;
+  background: var(--action-complete-bg);
+  color: var(--action-complete-text);
+}
+
+.curriculum-action-btn-complete:hover:not(:disabled) {
+  color: var(--action-complete-text);
+  filter: brightness(1.1);
+}
+
+.curriculum-action-btn-explain {
+  border-color: transparent;
+  background: var(--action-explain-bg);
+  color: var(--action-explain-text);
+}
+
+.curriculum-action-btn-explain:hover:not(:disabled) {
+  color: var(--action-explain-text);
+  filter: brightness(1.1);
+}
+
+.curriculum-action-btn-quiz {
+  border-color: transparent;
+  background: var(--action-quiz-bg);
+  color: var(--action-quiz-text);
+}
+
+.curriculum-action-btn-quiz:hover:not(:disabled) {
+  color: var(--action-quiz-text);
+  filter: brightness(1.1);
+}
+
 .curriculum-action-btn-done {
   border-color: transparent;
   background: #16a34a;
@@ -685,15 +845,11 @@ body {
   filter: brightness(1.08);
 }
 
-.curriculum-explain-wrap {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  align-items: flex-start;
-}
-
-.curriculum-explain-text {
-  margin: 0;
+/* .curriculum-detail p(클래스1+엘리먼트1)가 .curriculum-explain-text(클래스1)보다
+   상세도가 더 높아서, .curriculum-explain-text도 <p>인 이 요소에는 margin이 안
+   먹혔다 — 클래스 두 개짜리 선택자로 상세도를 올려서 확실히 이기게 했다. */
+.curriculum-detail .curriculum-explain-text {
+  margin: 18px 0 0;
   line-height: 1.6;
   white-space: pre-line;
 }
@@ -803,6 +959,7 @@ body {
 /* 퀴즈 */
 .curriculum-quiz-wrap {
   width: 100%;
+  margin-top: 30px;
 }
 
 .curriculum-quiz {

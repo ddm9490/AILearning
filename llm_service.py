@@ -19,7 +19,16 @@ from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 
+from keyword_catalog import TIERS
+
 load_dotenv()
+
+# keywords/prerequisites/concepts를 만들 때 LLM에게 tier(0~6)도 같이 매기게 한다.
+# keyword_catalog.resolve_keyword()가 카탈로그에 정확히 있는 용어는 항상 카탈로그
+# 판정을 우선하지만(일관성 보장), 카탈로그에 없는 새 용어는 이 LLM 판정을 그대로
+# 써서 회색(tier 없음) 태그가 되는 걸 막는다 — 사용자가 "어떤 키워드는 색이 있고
+# 어떤 건 없어서 마음에 안 든다"고 리포트해서 추가함.
+TIER_DEFINITIONS_TEXT = "\n".join(f"{t['id']}: {t['name']} — {t['description']}" for t in TIERS)
 
 # quota가 모델별로 따로 관리되기 때문에, 주 모델이 일일 한도를 다 쓰면 순서대로
 # 다음 모델로 넘어간다. gemini-3.1-flash-lite는 성능은 낮지만 별도 quota를 쓴다.
@@ -156,7 +165,10 @@ def curate_papers(interest_text, selected_keywords, candidates, count, known_key
         미리 뽑아낸, keyword_catalog에 정의된 용어들. LLM이 이 목록을 참고해서
         표기를 통일하고, 카탈로그에 있는 신조어(SwiGLU, Flash Attention 등)를
         놓치지 않도록 근거로 준다.
-    반환: [{"id", "keywords": [str, ...], "prerequisites": [str, ...]}] (관련도 높은 순)
+    반환: [{"id", "keywords": [{name, tier}, ...], "prerequisites": [{name, tier}, ...]}]
+    (관련도 높은 순). tier(0~6)는 LLM이 직접 매긴 판정이고, keyword_catalog.resolve_keyword()가
+    카탈로그에 정확히 있는 용어는 이 값을 무시하고 카탈로그 판정을 우선 쓴다 — 카탈로그에
+    없는 새 용어에 대해서만 이 tier가 실제로 쓰인다.
     """
     combined = interest_text.strip()
     if selected_keywords:
@@ -183,13 +195,27 @@ def curate_papers(interest_text, selected_keywords, candidates, count, known_key
                         "id": {"type": "string"},
                         "keywords": {
                             "type": "array",
-                            "items": {"type": "string"},
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {"type": "string"},
+                                    "tier": {"type": "integer"},
+                                },
+                                "required": ["name", "tier"],
+                            },
                             "minItems": 3,
                             "maxItems": 5,
                         },
                         "prerequisites": {
                             "type": "array",
-                            "items": {"type": "string"},
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {"type": "string"},
+                                    "tier": {"type": "integer"},
+                                },
+                                "required": ["name", "tier"],
+                            },
                             "minItems": 2,
                             "maxItems": 4,
                         },
@@ -232,9 +258,17 @@ def curate_papers(interest_text, selected_keywords, candidates, count, known_key
    논문 난이도에 비해 사용자가 이미 잘 아는 개념(선택한 키워드에 있는 것)은 굳이
    반복하지 말고, 정말 필요한 배경 지식 위주로 골라줘.
 
-키워드/선수지식은 짧고 구체적으로: 기술/아키텍처/메커니즘 용어는 영어로
-(예: Self-Attention, Diffusion Model), 수학 개념은 한국어로(예: 선형대수, 베이즈 통계)
-표기해줘. id는 후보 목록에 있는 것만 정확히 사용해."""
+keywords/prerequisites의 각 항목은 {{name, tier}} 객체야. name은 짧고 구체적으로:
+기술/아키텍처/메커니즘 용어는 영어로(예: Self-Attention, Diffusion Model), 수학
+개념은 한국어로(예: 선형대수, 베이즈 통계) 표기해줘. tier는 그 개념이 "얼마나
+기초적인가(0) ↔ 얼마나 상위 개념인가(6)"를 아래 기준으로 0~6 중 하나로 매겨줘
+(참고 지식 베이스에 있는 용어는 거기 표기를 우선하되, tier는 그 용어의 성격에
+맞게 네가 직접 판단해서 매겨도 돼):
+---
+{TIER_DEFINITIONS_TEXT}
+---
+
+id는 후보 목록에 있는 것만 정확히 사용해."""
 
     result = _generate_json(prompt, schema)
     papers = result.get("papers", [])
@@ -252,8 +286,10 @@ def generate_curriculum(target_label, target_description, context_chunks, intere
     Gemini의 사전 지식만으로 만들라고 명시적으로 안내한다 — RAG on/off를 프롬프트
     레벨에서도 명확히 구분하는 것.
     반환: {"nodes": [{"id","title","description","learning_points":[str,...],
-           "concepts":[str,...],"is_target":bool}], "edges": [{"from","to"}]}
-    (사이클 검증은 curriculum_service가 한다)
+           "concepts":[{name,tier},...],"is_target":bool}], "edges": [{"from","to"}]}
+    (사이클 검증은 curriculum_service가 한다). concepts의 tier(0~6)는 LLM이 직접
+    매긴 판정 — keyword_catalog.resolve_keyword()가 카탈로그에 없는 새 용어에
+    한해서만 이 값을 대신 쓴다.
     """
     known_keywords = known_keywords or []
     known_keywords_text = ", ".join(kw["name"] for kw in known_keywords) if known_keywords else "(해당 없음)"
@@ -293,7 +329,14 @@ description/learning_points를 쓸 때 이 발췌 내용에 최대한 구체적�
                         },
                         "concepts": {
                             "type": "array",
-                            "items": {"type": "string"},
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {"type": "string"},
+                                    "tier": {"type": "integer"},
+                                },
+                                "required": ["name", "tier"],
+                            },
                             "minItems": 1,
                             "maxItems": 5,
                         },
@@ -352,9 +395,14 @@ description/learning_points를 쓸 때 이 발췌 내용에 최대한 구체적�
     2~4개의 짧고 구체적인 항목으로. "OOO을 이해한다" 같은 뭉뚱그린 문장 말고
     "쿼리·키·값 벡터의 내적으로 어텐션 가중치를 계산하는 과정을 손으로 따라갈 수
     있다"처럼 행동 가능한(actionable) 문장으로 써줘.
-  - concepts(이 노드와 관련된 핵심 키워드 1~5개)
-- concepts는 짧고 구체적으로: 기술/아키텍처/메커니즘 용어는 영어로, 수학 개념은
-  한국어로 표기해줘.
+  - concepts(이 노드와 관련된 핵심 키워드 1~5개, 각각 {{name, tier}} 객체)
+- concepts의 name은 짧고 구체적으로: 기술/아키텍처/메커니즘 용어는 영어로, 수학
+  개념은 한국어로 표기해줘. tier는 그 개념이 "얼마나 기초적인가(0) ↔ 얼마나 상위
+  개념인가(6)"를 아래 기준으로 0~6 중 하나로 매겨줘(참고 지식 베이스에 있는
+  용어는 표기를 우선하되, tier는 성격에 맞게 네가 직접 판단해도 돼):
+---
+{TIER_DEFINITIONS_TEXT}
+---
 - title/description/learning_points는 **반드시 한국어 문장으로** 작성해줘. 참고 자료
   발췌가 영어여도 그대로 옮기지 말고 한국어로 번역/설명해줘 — 그 안에 나오는 기술
   용어(예: Self-Attention, Backpropagation)나 수식 자체는 원래 표기를 유지해도 되지만,

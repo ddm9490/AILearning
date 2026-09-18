@@ -130,10 +130,15 @@ def recommend():
         paper = candidates_by_id.get(item.get("id"))
         if not paper:
             continue
+        # item["keywords"]/["prerequisites"]는 이제 {name, tier} 객체다 — tier는
+        # LLM이 직접 매긴 판정으로, resolve_keyword가 카탈로그/별칭 어디에서도 못
+        # 찾은 새 용어에 한해서만 이 값을 대신 쓴다(카탈로그에 있으면 그쪽이 우선).
         paper = {
             **paper,
-            "keywords": [resolve_keyword(name) for name in item.get("keywords", [])],
-            "prerequisites": [resolve_keyword(name) for name in item.get("prerequisites", [])],
+            "keywords": [resolve_keyword(kw.get("name", ""), kw.get("tier")) for kw in item.get("keywords", [])],
+            "prerequisites": [
+                resolve_keyword(kw.get("name", ""), kw.get("tier")) for kw in item.get("prerequisites", [])
+            ],
         }
         papers.append(paper)
 
@@ -150,6 +155,10 @@ def curriculum():
     target_type = str(body.get("target_type", "")).strip()
     interest = str(body.get("interest", "")).strip()
     use_rag = body.get("use_rag", True)
+    # 논문 카드에서 미리보기 삼아 눌러볼 때마다 "내 커리큘럼"에 쌓이는 게 불편하다는
+    # 피드백을 받아서, 기본은 저장하되(독립된 "커리큘럼" 탭은 만들 의도가 분명하므로)
+    # 호출부가 명시적으로 save=false를 주면 저장 없이 미리보기만 반환한다.
+    save = bool(body.get("save", True))
 
     if target_type == "paper":
         pdf_url = str(body.get("pdf_url", "")).strip()
@@ -186,15 +195,48 @@ def curriculum():
     except Exception:
         return jsonify({"error": "커리큘럼 생성에 실패했어요. 잠시 후 다시 시도해주세요."}), 502
 
-    # 커리큘럼은 더 이상 일회성이 아니다 — 생성되는 즉시 저장해서 "내 커리큘럼" 탭에서
-    # 다시 찾아볼 수 있고, 노드별 학습 완료 상태/AI 추가 설명을 나중에도 이어서 쓸 수 있다.
-    curriculum_id = curriculum_store.save_curriculum(target_label, target_type, result, _get_owner_id())
-    result["id"] = curriculum_id
+    result["target_type"] = target_type
     for node in result["nodes"]:
         node["completed"] = False
         node["ai_explanation"] = None
         node["quiz"] = None
 
+    if save:
+        # "내 커리큘럼" 탭에서 다시 찾아볼 수 있고, 노드별 학습 완료 상태/AI 추가
+        # 설명을 나중에도 이어서 쓸 수 있게 즉시 저장한다.
+        curriculum_id = curriculum_store.save_curriculum(target_label, target_type, result, _get_owner_id())
+        result["id"] = curriculum_id
+    else:
+        # 저장 안 함 — 완료 표시/AI 설명/퀴즈처럼 id가 있어야 되는 기능은 못 쓰고,
+        # 그래프/설명만 미리 보여준다. 마음에 들면 /api/curriculum/save로 따로 저장한다.
+        result["id"] = None
+
+    return jsonify(result)
+
+
+@app.post("/api/curriculum/save")
+def save_curriculum():
+    """미리보기로만 만들어둔(POST /api/curriculum을 save=false로 호출한) 커리큘럼을
+    사용자가 실제로 "내 커리큘럼에 추가"할 때 쓴다. 다시 생성(Gemini/RAG 호출)하지
+    않고, 프론트가 이미 들고 있는 결과를 그대로 저장만 한다."""
+    body = request.get_json(silent=True) or {}
+    target_label = str(body.get("target_label", "")).strip()
+    target_type = str(body.get("target_type", "")).strip()
+    nodes = body.get("nodes")
+    edges = body.get("edges")
+
+    if not target_label or target_type not in ("paper", "keyword") or not nodes:
+        return jsonify({"error": "저장할 커리큘럼 데이터가 올바르지 않아요."}), 400
+
+    result = {
+        "target_label": target_label,
+        "used_rag": bool(body.get("used_rag", False)),
+        "nodes": nodes,
+        "edges": edges or [],
+    }
+    curriculum_id = curriculum_store.save_curriculum(target_label, target_type, result, _get_owner_id())
+    result["id"] = curriculum_id
+    result["target_type"] = target_type
     return jsonify(result)
 
 

@@ -190,7 +190,7 @@ function renderSearchKeywordsBanner(keywords) {
   keywords.forEach((kw) => {
     const badge = document.createElement("span");
     badge.className = "search-keyword-badge";
-    badge.textContent = kw;
+    badge.textContent = `#${kw}`;
     searchKeywordsBannerEl.appendChild(badge);
   });
 }
@@ -249,16 +249,53 @@ function buildPaperCard(paper) {
   meta.className = "paper-meta";
   meta.textContent = `${paper.year} · ${formatAuthors(paper.authors)} · ${paper.categories.join(", ")}`;
 
+  card.append(top, meta);
+
+  // 선수 지식/추천 키워드를 나란히 2단으로 배치한다 — "필요한 것 vs 이 논문이
+  // 다루는 것"을 바로 대비해서 볼 수 있고, 카드가 넓어져서(1080px 컨테이너)
+  // 한 줄에 넉넉히 들어간다. 카드/화면이 좁아지면 grid-template-columns가
+  // auto-fit이라 자동으로 다시 세로로 쌓인다.
+  const keywordGroups = document.createElement("div");
+  keywordGroups.className = "keyword-groups-row";
+  if (paper.prerequisites && paper.prerequisites.length) {
+    keywordGroups.appendChild(buildKeywordGroup("읽기 전 필요한 선수 지식", paper.prerequisites));
+  }
+  keywordGroups.appendChild(buildKeywordGroup("AI 추천 키워드", paper.keywords));
+  card.appendChild(keywordGroups);
+
+  // 요약문은 카드가 너무 길어 보이지 않게 기본 접어두고, 태그 바로 아래(버튼 줄
+  // 위쪽) 자리에서 펼쳐진다. 키워드/선수 지식 태그는 한눈에 훑어보는 용도라 계속
+  // 바로 보이게 둔다.
   const summary = document.createElement("p");
   summary.className = "paper-summary";
   summary.textContent = paper.summary;
+  summary.hidden = true;
+  card.appendChild(summary);
 
-  card.append(top, meta, summary);
-  if (paper.prerequisites && paper.prerequisites.length) {
-    card.appendChild(buildKeywordGroup("읽기 전 필요한 선수 지식", paper.prerequisites));
-  }
-  card.appendChild(buildKeywordGroup("AI 추천 키워드", paper.keywords));
-  card.appendChild(buildCurriculumSection({ target_type: "paper", title: paper.title, summary: paper.summary, pdf_url: paper.pdf_url }, "이 논문 커리큘럼 만들기"));
+  const detailsBtn = document.createElement("button");
+  detailsBtn.type = "button";
+  detailsBtn.className = "curriculum-btn";
+  detailsBtn.textContent = "자세히 보기";
+  detailsBtn.addEventListener("click", () => {
+    summary.hidden = !summary.hidden;
+    detailsBtn.textContent = summary.hidden ? "자세히 보기" : "접기";
+  });
+
+  // "자세히 보기"와 "커리큘럼에 추가"를 같은 스타일 버튼으로 한 줄에 나란히 둔다.
+  const { button: curriculumBtn, content: curriculumContent } = buildCurriculumTrigger(
+    { target_type: "paper", title: paper.title, summary: paper.summary, pdf_url: paper.pdf_url },
+    "커리큘럼에 추가",
+  );
+
+  const actionsRow = document.createElement("div");
+  actionsRow.className = "curriculum-actions-row";
+  actionsRow.append(detailsBtn, curriculumBtn);
+
+  const section = document.createElement("div");
+  section.className = "curriculum-section";
+  section.append(actionsRow, curriculumContent);
+
+  card.appendChild(section);
 
   return card;
 }
@@ -271,7 +308,7 @@ function buildTagRow(keywords) {
   sorted.forEach((kw) => {
     const tag = document.createElement("span");
     tag.className = kw.tier === null || kw.tier === undefined ? "tag tag-neutral" : `tag tier-${kw.tier}`;
-    tag.textContent = kw.name;
+    tag.textContent = `#${kw.name}`;
     tag.title = kw.tier_name ?? "";
     row.appendChild(tag);
   });
@@ -291,11 +328,14 @@ function buildKeywordGroup(label, keywords) {
 }
 
 // target: {target_type: "paper", title, summary, pdf_url} 또는 {target_type: "keyword", keyword}
-// buttonLabel: 접었다 펼 때 보여줄 기본 버튼 문구
-function buildCurriculumSection(target, buttonLabel) {
-  const wrapper = document.createElement("div");
-  wrapper.className = "curriculum-section";
-
+// buttonLabel: 처음 누를 때(아직 생성 전) 보여줄 버튼 문구.
+// 논문 카드에서 미리보기 삼아 눌러볼 때마다 "내 커리큘럼"에 자동으로 쌓이는 게
+// 불편하다는 피드백을 받아서, 여기서는 save:false로 생성만 하고(미리보기), 마음에
+// 들면 별도 "내 커리큘럼에 저장" 버튼으로 명시적으로 저장하게 분리했다.
+// 감싸는 wrapper는 안 만들고 {button, content}만 돌려준다 — 호출부(buildPaperCard)가
+// 이 버튼을 "자세히 보기" 버튼과 같은 줄에 나란히 놓고 싶어해서, 레이아웃은 호출부가
+// 정하게 뺐다.
+function buildCurriculumTrigger(target, buttonLabel) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "curriculum-btn";
@@ -305,15 +345,19 @@ function buildCurriculumSection(target, buttonLabel) {
   content.className = "curriculum-content";
   content.style.display = "none";
 
-  let loaded = false;
+  let previewData = null;
 
   button.addEventListener("click", async () => {
     if (content.style.display !== "none") {
       content.style.display = "none";
+      button.textContent = "커리큘럼 보기";
       return;
     }
     content.style.display = "block";
-    if (loaded) return;
+    if (previewData) {
+      button.textContent = "커리큘럼 접기";
+      return;
+    }
 
     button.disabled = true;
     const originalText = button.textContent;
@@ -326,22 +370,65 @@ function buildCurriculumSection(target, buttonLabel) {
       const data = await postJSON("/api/curriculum", {
         ...target,
         interest: interestInput.value.trim(),
+        save: false,
       });
+      previewData = data;
+      content.appendChild(buildCurriculumPreviewSaveBar(data));
       renderCurriculumGraph(content, data);
-      loaded = true;
+      button.textContent = "커리큘럼 접기";
     } catch (err) {
       const errorMsg = document.createElement("p");
       errorMsg.className = "curriculum-error";
       errorMsg.textContent = err.message || "커리큘럼을 만들지 못했어요.";
       content.appendChild(errorMsg);
+      button.textContent = originalText;
     } finally {
       button.disabled = false;
-      button.textContent = originalText;
     }
   });
 
-  wrapper.append(button, content);
-  return wrapper;
+  return { button, content };
+}
+
+// 미리보기 그래프 위에 뜨는 "내 커리큘럼에 저장" 바. data는 save:false로 받은 응답
+// (id가 없는 상태) — 저장 전까지는 완료 표시/AI 설명/퀴즈 같은 id가 필요한 기능은
+// 못 쓰고, 저장하고 나면 "내 커리큘럼" 탭에서 그 기능들을 이어서 쓸 수 있다.
+function buildCurriculumPreviewSaveBar(data) {
+  const bar = document.createElement("div");
+  bar.className = "curriculum-preview-bar";
+
+  const note = document.createElement("span");
+  note.className = "curriculum-preview-note";
+  note.textContent = "미리보기예요 — 저장해야 진행 상황이 남아요.";
+
+  const saveBtn = document.createElement("button");
+  saveBtn.type = "button";
+  saveBtn.className = "curriculum-action-btn";
+  saveBtn.textContent = "내 커리큘럼에 저장";
+
+  saveBtn.addEventListener("click", async () => {
+    saveBtn.disabled = true;
+    saveBtn.textContent = "저장하는 중...";
+    try {
+      await postJSON("/api/curriculum/save", {
+        target_label: data.target_label,
+        target_type: data.target_type,
+        used_rag: data.used_rag,
+        nodes: data.nodes,
+        edges: data.edges,
+      });
+      saveBtn.textContent = "저장됨";
+      saveBtn.classList.add("curriculum-action-btn-done");
+      note.textContent = "\"내 커리큘럼\" 탭에서 진행 상황을 이어갈 수 있어요.";
+    } catch (err) {
+      saveBtn.disabled = false;
+      saveBtn.textContent = "내 커리큘럼에 저장";
+      note.textContent = err.message || "저장하지 못했어요. 다시 시도해주세요.";
+    }
+  });
+
+  bar.append(note, saveBtn);
+  return bar;
 }
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -647,22 +734,31 @@ function showCurriculumDetail(panel, node, context, nodeGroupEl) {
 
   panel.appendChild(buildTagRow(node.concepts));
 
-  const actions = document.createElement("div");
-  actions.className = "curriculum-detail-actions";
-
   if (context && context.curriculumId) {
-    actions.appendChild(buildCompleteToggleButton(node, context, nodeGroupEl));
-    actions.appendChild(buildExplainSection(node, context));
-    actions.appendChild(buildQuizSection(node, context, nodeGroupEl));
-  }
+    const actions = document.createElement("div");
+    actions.className = "curriculum-detail-actions";
 
-  panel.appendChild(actions);
+    const explainSection = buildExplainSection(node, context);
+    const quizSection = buildQuizSection(node, context, nodeGroupEl);
+
+    // 버튼 3개는 항상 한 줄에 나란히, 펼쳐지는 내용(설명 텍스트/퀴즈 문제)은
+    // 그 줄 아래에 따로 둔다 — 버튼과 내용을 같은 컨테이너에 넣으면 그 컨테이너
+    // 자체가 한 덩어리로 줄바꿈돼서 버튼들이 나란히 안 보이는 문제가 있었다.
+    actions.append(
+      buildCompleteToggleButton(node, context, nodeGroupEl),
+      explainSection.button,
+      quizSection.button,
+    );
+    panel.append(actions, explainSection.content, quizSection.content);
+  }
 }
 
 function buildCompleteToggleButton(node, context, nodeGroupEl) {
   const button = document.createElement("button");
   button.type = "button";
-  button.className = "curriculum-action-btn";
+  // curriculum-action-btn-complete: 아직 완료 전일 때의 연한 초록 배경. 완료하면
+  // setLabel()이 curriculum-action-btn-done(진한 초록)을 같이 붙여서 덮어쓴다.
+  button.className = "curriculum-action-btn curriculum-action-btn-complete";
 
   const setLabel = () => {
     button.textContent = node.completed ? "✓ 완료함 (취소하려면 클릭)" : "학습 완료로 표시";
@@ -692,13 +788,15 @@ function buildCompleteToggleButton(node, context, nodeGroupEl) {
   return button;
 }
 
+// {button, content}만 돌려준다(감싸는 wrap 없이) — 완료/설명/퀴즈 버튼 3개를
+// showCurriculumDetail이 한 줄에 나란히 놓고, 펼쳐지는 내용(설명 텍스트)은 그
+// 버튼 줄과 별도로 아래쪽에 배치하기 위해서다. 버튼 하나와 그 결과물을 같은
+// div로 묶어두면(예전처럼) 그 div 자체가 flex row 안에서 한 덩어리로 취급돼서
+// 옆의 다른 버튼들과 나란히 안 놓이고 줄바꿈되는 문제가 있었다.
 function buildExplainSection(node, context) {
-  const wrap = document.createElement("div");
-  wrap.className = "curriculum-explain-wrap";
-
   const button = document.createElement("button");
   button.type = "button";
-  button.className = "curriculum-action-btn";
+  button.className = "curriculum-action-btn curriculum-action-btn-explain";
   button.textContent = "AI에게 더 자세히 설명 요청";
 
   const textEl = document.createElement("p");
@@ -729,23 +827,22 @@ function buildExplainSection(node, context) {
     }
   });
 
-  wrap.append(button, textEl);
-  return wrap;
+  return { button, content: textEl };
 }
 
 // "학습 완료" 버튼은 자기 신고제라 실제 이해를 검증할 방법이 없었다 — 이 퀴즈가 그
 // 검증 루프. 객관식이라 채점은 서버 호출 없이 클라이언트에서 바로 되고, 문제 자체는
 // (explain처럼) 한 번 생성되면 캐싱되어 다시 눌러도 API를 또 부르지 않는다.
+// explain과 마찬가지로 {button, content}만 돌려준다 — 버튼 줄과 퀴즈 본문을
+// showCurriculumDetail이 따로 배치한다.
 function buildQuizSection(node, context, nodeGroupEl) {
-  const wrap = document.createElement("div");
-  wrap.className = "curriculum-quiz-wrap";
-
   const button = document.createElement("button");
   button.type = "button";
-  button.className = "curriculum-action-btn";
+  button.className = "curriculum-action-btn curriculum-action-btn-quiz";
   button.textContent = "이해도 확인 퀴즈 풀기";
 
   const quizEl = document.createElement("div");
+  quizEl.className = "curriculum-quiz-wrap";
   quizEl.hidden = true;
 
   const showQuiz = (questions) => {
@@ -773,8 +870,7 @@ function buildQuizSection(node, context, nodeGroupEl) {
     }
   });
 
-  wrap.append(button, quizEl);
-  return wrap;
+  return { button, content: quizEl };
 }
 
 function renderQuiz(container, questions, node, context, nodeGroupEl) {

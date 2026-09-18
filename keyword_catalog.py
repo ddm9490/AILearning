@@ -56,6 +56,7 @@ KEYWORD_CATALOG = {
     # tier 0: 수학 기초
     "선형대수": 0,
     "확률/통계": 0,
+    "확률론": 0,
     "미분": 0,
     "베이즈 통계": 0,
     "최적화 이론": 0,
@@ -163,8 +164,24 @@ KEYWORD_CATALOG = {
 }
 
 
-def resolve_keyword(name):
+def resolve_keyword(name, fallback_tier=None):
+    """name을 카탈로그에서 찾아 tier를 붙인다. 정확한 카탈로그 표기("Layer
+    Normalization")뿐 아니라 별칭/표기 변형("LayerNorm", "layer norm")도 알아본다 —
+    LLM이 만든 키워드는 카탈로그 표기 그대로 안 나올 때가 많아서(예: "self-attention"
+    소문자-하이픈 표기), 정확히 일치하는 것만 찾으면 실제로 아는 개념인데도 회색
+    (tier 없음) 태그가 돼버렸다.
+
+    fallback_tier: 카탈로그/별칭 어디에도 없을 때 쓸 tier id(0~6). LLM이 새 키워드를
+    만들 때 스스로 매긴 tier를 넘겨주면, 우리 카탈로그에 없는 용어도 색이 생긴다 —
+    카탈로그에 있는 용어는 항상 카탈로그 판정이 우선(일관성 보장), 없는 용어만
+    LLM 판정을 대신 쓴다."""
     tier_id = KEYWORD_CATALOG.get(name)
+    if tier_id is None:
+        canonical = _ALIAS_TO_CANONICAL.get(name.strip().lower())
+        if canonical:
+            tier_id = KEYWORD_CATALOG.get(canonical)
+    if tier_id is None and fallback_tier in TIER_BY_ID:
+        tier_id = fallback_tier
     tier = TIER_BY_ID.get(tier_id)
     return {
         "name": name,
@@ -214,6 +231,14 @@ KEYWORD_ALIASES = {
     "MoE": ["MoE", "Mixture of Experts", "Mixture-of-Experts"],
     "AI Agent": ["AI agent", "autonomous agent", "LLM agent", "agentic"],
 }
+
+# 별칭 문자열(소문자) -> 카탈로그 표준 표기. resolve_keyword()가 "LayerNorm"처럼
+# 카탈로그 키와 정확히 안 맞는 표기도 찾아내는 데 쓴다. 카탈로그 키 자기 자신도
+# 포함해서, 표기가 완전히 같은데 대소문자만 다른 경우("gnn" vs "GNN")도 잡는다.
+_ALIAS_TO_CANONICAL = {name.lower(): name for name in KEYWORD_CATALOG}
+for _canonical, _aliases in KEYWORD_ALIASES.items():
+    for _alias in _aliases:
+        _ALIAS_TO_CANONICAL[_alias.lower()] = _canonical
 
 
 def extract_keywords(text, limit=8):

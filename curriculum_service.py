@@ -47,7 +47,12 @@ def generate_curriculum(target_label, target_description, target, provider_name,
             "title": node.get("title", ""),
             "description": node.get("description", ""),
             "learning_points": node.get("learning_points", []),
-            "concepts": [resolve_keyword(name) for name in node.get("concepts", [])],
+            # concepts는 이제 {name, tier} 객체 — tier는 LLM이 직접 매긴 판정으로,
+            # resolve_keyword가 카탈로그/별칭 어디에서도 못 찾은 새 용어에 한해서만
+            # 이 값을 대신 쓴다(카탈로그에 있으면 그쪽이 우선).
+            "concepts": [
+                resolve_keyword(c.get("name", ""), c.get("tier")) for c in node.get("concepts", [])
+            ],
             "is_target": bool(node.get("is_target")),
             "layer": layer_of.get(node["id"], 0),
         }
