@@ -69,10 +69,15 @@ def no_rag_provider(target):
     return []
 
 
-def paper_pdf_provider(target):
+def paper_pdf_provider(target, include_textbook=True):
     """target: {"pdf_url": str, "title": str(선택)}. 논문 PDF를 받아 청크 임베딩
     유사도로 관련 발췌를 고르고, title이 있으면 교재/코스 소스에서도 배경 설명을
-    찾아 섞는다."""
+    찾아 섞는다.
+
+    include_textbook=False면 교재/코스 소스를 건너뛴다 — D2L/HF Course/Spinning Up은
+    전부 AI/ML 전용 교재라, AI/ML이 아닌 분야의 커리큘럼에 섞으면 엉뚱한 배경지식이
+    끼어든다. 그 분야 전용 교재 소스가 없으니, 대신 논문 근거만으로 충분히 좁혀서
+    쓴다(아래 PROVIDERS의 "*_no_textbook" 키 참고)."""
     pdf_url = target.get("pdf_url", "").strip()
     if not pdf_url:
         return []
@@ -87,16 +92,23 @@ def paper_pdf_provider(target):
     title = target.get("title", "").strip()
     # textbook_index.search()가 이미 소스별 태그(예: "[D2L 교재] ...", "[OpenAI Spinning
     # Up] ...")를 붙여서 돌려주므로 여기서 다시 감쌀 필요가 없다.
-    textbook_chunks = _textbook_chunks(title) if title else []
+    textbook_chunks = _textbook_chunks(title) if (include_textbook and title) else []
 
     return _retrieve_relevant(chunks + textbook_chunks)
 
 
-def keyword_provider(target):
+def paper_pdf_provider_no_textbook(target):
+    return paper_pdf_provider(target, include_textbook=False)
+
+
+def keyword_provider(target, include_textbook=True):
     """target: {"keyword": str}. arXiv에서 그 키워드의 대표 논문 몇 개를 찾아 초록을
     발췌 텍스트로 쓰고(PDF 전체를 받지 않아 훨씬 가벼움), D2L/HF Course/Spinning Up
     중 같은 키워드로 찾은 배경 설명 발췌도 함께 섞는다 — 논문은 "최신 연구가 뭘
-    했는지", 교재/코스는 "개념을 처음부터 어떻게 설명하는지"를 보완해준다."""
+    했는지", 교재/코스는 "개념을 처음부터 어떻게 설명하는지"를 보완해준다.
+
+    include_textbook=False면 교재/코스 소스는 건너뛰고 arXiv 초록만 쓴다 — 위
+    paper_pdf_provider의 include_textbook 설명과 같은 이유(AI/ML 전용 교재)."""
     keyword = target.get("keyword", "").strip()
     if not keyword:
         return []
@@ -106,9 +118,13 @@ def keyword_provider(target):
     # 인용할 수 있게 한다 (그냥 "참고 자료에 따르면"보다 훨씬 자세해진다).
     arxiv_chunks = [f"[arXiv 논문 \"{r.title}\"] {' '.join(r.summary.split())}" for r in results]
     # textbook_index.search()가 이미 소스별 태그를 붙여서 돌려준다.
-    textbook_chunks = _textbook_chunks(keyword)
+    textbook_chunks = _textbook_chunks(keyword) if include_textbook else []
 
     return _retrieve_relevant(arxiv_chunks + textbook_chunks)
+
+
+def keyword_provider_no_textbook(target):
+    return keyword_provider(target, include_textbook=False)
 
 
 def _retrieve_relevant(chunks):
@@ -128,8 +144,13 @@ def _retrieve_relevant(chunks):
 
 
 # target_type(app.py) -> provider. "none"은 RAG를 끄고 싶을 때 명시적으로 고를 수 있는 값.
+# "*_no_textbook"은 AI/ML이 아닌 분야(domain != "ai_ml")용 — D2L/HF Course/Spinning Up이
+# 전부 AI/ML 전용 교재라서 다른 분야엔 쓸 수 없으니, 논문 근거(arXiv)만 쓴다. 어떤
+# provider 키를 domain에 따라 고를지는 curriculum_service/app.py가 결정한다.
 PROVIDERS = {
     "paper": paper_pdf_provider,
     "keyword": keyword_provider,
+    "paper_no_textbook": paper_pdf_provider_no_textbook,
+    "keyword_no_textbook": keyword_provider_no_textbook,
     "none": no_rag_provider,
 }

@@ -9,6 +9,7 @@ const SUGGESTED_KEYWORDS = [
 ];
 
 const interestInput = document.getElementById("interest-input");
+const domainSelect = document.getElementById("domain-select");
 const topicChipsEl = document.getElementById("topic-chips");
 const countInput = document.getElementById("count-input");
 const searchForm = document.getElementById("search-form");
@@ -20,6 +21,7 @@ const tierLegendEl = document.getElementById("tier-legend");
 const searchKeywordsBannerEl = document.getElementById("search-keywords-banner");
 const keywordCurriculumForm = document.getElementById("keyword-curriculum-form");
 const keywordCurriculumInput = document.getElementById("keyword-curriculum-input");
+const keywordCurriculumContextEl = document.getElementById("keyword-curriculum-context");
 const keywordCurriculumRagCheckbox = document.getElementById("keyword-curriculum-rag");
 const keywordCurriculumSubmitBtn = document.getElementById("keyword-curriculum-submit-btn");
 const keywordCurriculumResultEl = document.getElementById("keyword-curriculum-result");
@@ -27,6 +29,10 @@ const libraryEmptyEl = document.getElementById("library-empty");
 const libraryListEl = document.getElementById("library-list");
 const libraryDetailPanelEl = document.getElementById("library-detail-panel");
 const libraryDetailEl = document.getElementById("library-detail");
+const exampleSectionEl = document.getElementById("example-section");
+const exampleBodyEl = document.getElementById("example-body");
+const exampleToggleBtn = document.getElementById("example-toggle-btn");
+const exampleListEl = document.getElementById("example-list");
 
 const state = {
   selectedKeywords: new Set(),
@@ -235,7 +241,7 @@ function buildPaperCard(paper) {
   absLink.href = paper.abs_url;
   absLink.target = "_blank";
   absLink.rel = "noopener noreferrer";
-  absLink.textContent = "arXiv";
+  absLink.textContent = "원문보기";
   const pdfLink = document.createElement("a");
   pdfLink.href = paper.pdf_url;
   pdfLink.target = "_blank";
@@ -250,6 +256,15 @@ function buildPaperCard(paper) {
   meta.textContent = `${paper.year} · ${formatAuthors(paper.authors)} · ${paper.categories.join(", ")}`;
 
   card.append(top, meta);
+
+  // "왜 이 논문이 추천됐는지 알려달라"는 사용자 피드백으로 추가된 필드 — 요약(기본
+  // 접힘)을 펼쳐보기 전에 먼저 눈에 들어오도록 태그보다도 위, meta 바로 아래 배치한다.
+  if (paper.reason) {
+    const reason = document.createElement("p");
+    reason.className = "paper-reason";
+    reason.textContent = `💡 ${paper.reason}`;
+    card.appendChild(reason);
+  }
 
   // 선수 지식/추천 키워드를 나란히 2단으로 배치한다 — "필요한 것 vs 이 논문이
   // 다루는 것"을 바로 대비해서 볼 수 있고, 카드가 넓어져서(1080px 컨테이너)
@@ -370,6 +385,7 @@ function buildCurriculumTrigger(target, buttonLabel) {
       const data = await postJSON("/api/curriculum", {
         ...target,
         interest: interestInput.value.trim(),
+        domain: domainSelect.value,
         save: false,
       });
       previewData = data;
@@ -416,9 +432,12 @@ function buildCurriculumPreviewSaveBar(data) {
       await postJSON("/api/curriculum/save", {
         target_label: data.target_label,
         target_type: data.target_type,
+        domain: data.domain,
         used_rag: data.used_rag,
         nodes: data.nodes,
         edges: data.edges,
+        pdf_url: data.pdf_url,
+        target_description: data.target_description,
       });
       saveBtn.textContent = "저장됨";
       saveBtn.classList.add("curriculum-action-btn-done");
@@ -615,6 +634,17 @@ function renderCurriculumGraph(container, data) {
     ? "관련 자료를 찾아 근거로 삼아 만들었어요 (RAG)."
     : "AI의 사전 지식만으로 만들었어요 (RAG 미사용).";
   container.appendChild(banner);
+
+  // 목록 배지("🔁 재생성됨")와 같은 표지를 상세 그래프에서도 보여준다 — 어떤 조건을
+  // 추가해서 다시 만들었는지까지 같이 보여줘야 원본과 뭐가 다른지 짐작할 수 있다.
+  if (data.regenerated_from) {
+    const regenBanner = document.createElement("p");
+    regenBanner.className = "curriculum-regen-banner";
+    regenBanner.textContent = data.regenerated_note
+      ? `🔁 재생성된 커리큘럼이에요 — 추가한 조건: "${data.regenerated_note}"`
+      : "🔁 재생성된 커리큘럼이에요.";
+    container.appendChild(regenBanner);
+  }
 
   const progress = buildProgressSummary(data.nodes);
   container.appendChild(progress.el);
@@ -1049,6 +1079,7 @@ function renderQuiz(container, questions, node, context, nodeGroupEl) {
 }
 
 const TARGET_TYPE_ICON = { paper: "📄", keyword: "🧭" };
+const DOMAIN_LABEL = { ai_ml: "AI/ML", other: "기타 분야" };
 
 function formatCreatedAt(unixSeconds) {
   return new Date(unixSeconds * 1000).toLocaleString("ko-KR", {
@@ -1058,6 +1089,105 @@ function formatCreatedAt(unixSeconds) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+// "예시 커리큘럼 안 보이게 해달라"는 요청으로 추가된 숨기기 토글 — 계정이 없는
+// 앱이라 서버에 저장할 이유는 없고, 이 브라우저에서만 기억하면 되니 localStorage
+// 하나로 충분하다. 사생활 보호 모드 등에서 접근이 막혀도(예외 발생) 그냥 "항상
+// 보임"으로 동작하게 조용히 무시한다.
+const EXAMPLES_HIDDEN_KEY = "ailearning_examples_hidden";
+
+function isExamplesHiddenPref() {
+  try {
+    return localStorage.getItem(EXAMPLES_HIDDEN_KEY) === "1";
+  } catch (err) {
+    return false;
+  }
+}
+
+function setExamplesHiddenPref(hidden) {
+  try {
+    localStorage.setItem(EXAMPLES_HIDDEN_KEY, hidden ? "1" : "0");
+  } catch (err) {
+    // 저장이 안 되도 이번 세션 안에서는 토글 자체는 정상 동작하니 조용히 넘어간다.
+  }
+}
+
+function applyExamplesVisibility() {
+  const hidden = isExamplesHiddenPref();
+  exampleBodyEl.hidden = hidden;
+  exampleToggleBtn.textContent = hidden ? "펼치기" : "숨기기";
+}
+
+exampleToggleBtn.addEventListener("click", () => {
+  setExamplesHiddenPref(!isExamplesHiddenPref());
+  applyExamplesVisibility();
+});
+
+// "예시 커리큘럼" — 유명 AI/ML 논문으로 미리 만들어둔, 모두에게 똑같이 보이는
+// 읽기 전용 콘텐츠(seed_examples.py로 생성). owner_id 스코핑이 없는 별도
+// 엔드포인트(/api/curricula/examples)를 쓴다. 세션 동안 한 번만 불러오면 되니
+// init()에서 한 번만 호출한다(탭을 열 때마다 다시 부르는 renderLibraryList와 다름).
+async function renderExampleList() {
+  let items;
+  try {
+    items = await fetchJSON("/api/curricula/examples");
+  } catch (err) {
+    return; // 예시는 핵심 기능이 아니라서, 못 불러와도 조용히 섹션을 숨긴 채로 둔다.
+  }
+
+  if (!items.length) return;
+
+  exampleSectionEl.hidden = false;
+  applyExamplesVisibility();
+  exampleListEl.innerHTML = "";
+  items.forEach((item) => {
+    exampleListEl.appendChild(buildExampleRow(item));
+  });
+}
+
+function buildExampleRow(item) {
+  const row = document.createElement("div");
+  row.className = "library-row";
+
+  const main = document.createElement("button");
+  main.type = "button";
+  main.className = "library-row-main";
+
+  const titleLine = document.createElement("div");
+  titleLine.className = "library-row-title";
+  const titleText = document.createElement("span");
+  titleText.className = "library-row-title-text";
+  titleText.textContent = `${TARGET_TYPE_ICON[item.target_type] || "🧭"} ${item.target_label}`;
+  titleLine.appendChild(titleText);
+
+  const metaLine = document.createElement("div");
+  metaLine.className = "library-row-meta";
+  const domainLabel = DOMAIN_LABEL[item.domain] || DOMAIN_LABEL.ai_ml;
+  metaLine.textContent = `${domainLabel} · 노드 ${item.total_nodes}개`;
+
+  main.append(titleLine, metaLine);
+  main.addEventListener("click", () => openExampleCurriculum(item.id));
+
+  row.appendChild(main);
+  return row;
+}
+
+async function openExampleCurriculum(curriculumId) {
+  libraryDetailEl.innerHTML = "불러오는 중...";
+  libraryDetailPanelEl.hidden = false;
+  libraryDetailPanelEl.scrollIntoView({ behavior: "smooth", block: "start" });
+
+  try {
+    const data = await fetchJSON(`/api/curriculum/examples/${curriculumId}`);
+    // id를 비워서 넘긴다 — renderCurriculumGraph는 context.curriculumId가 있을 때만
+    // 완료 표시/AI 설명/퀴즈 버튼을 그리는데, 예시는 사용자별 상태가 없는 읽기 전용
+    // 콘텐츠라 그 버튼들 자체가 없어야 한다(눌러도 owner_id가 안 맞아 404가 나는
+    // 것보다, 애초에 안 보이게 하는 게 낫다).
+    renderCurriculumGraph(libraryDetailEl, { ...data, id: null });
+  } catch (err) {
+    libraryDetailEl.textContent = err.message || "예시 커리큘럼을 불러오지 못했어요.";
+  }
 }
 
 async function renderLibraryList() {
@@ -1085,6 +1215,9 @@ async function renderLibraryList() {
 }
 
 function buildLibraryRow(item) {
+  const wrap = document.createElement("div");
+  wrap.className = "library-row-wrap";
+
   const row = document.createElement("div");
   row.className = "library-row";
 
@@ -1094,12 +1227,25 @@ function buildLibraryRow(item) {
 
   const titleLine = document.createElement("div");
   titleLine.className = "library-row-title";
-  titleLine.textContent = `${TARGET_TYPE_ICON[item.target_type] || "🧭"} ${item.target_label}`;
+
+  const titleText = document.createElement("span");
+  titleText.className = "library-row-title-text";
+  titleText.textContent = `${TARGET_TYPE_ICON[item.target_type] || "🧭"} ${item.target_label}`;
+  titleLine.appendChild(titleText);
+
+  if (item.regenerated_from) {
+    const badge = document.createElement("span");
+    badge.className = "library-row-badge";
+    badge.textContent = "🔁 재생성됨";
+    badge.title = "자연어 조건을 추가해서 원본에서 다시 만든 커리큘럼이에요.";
+    titleLine.appendChild(badge);
+  }
 
   const metaLine = document.createElement("div");
   metaLine.className = "library-row-meta";
   const pct = item.total_nodes ? Math.round((item.completed_nodes / item.total_nodes) * 100) : 0;
-  metaLine.textContent = `${formatCreatedAt(item.created_at)} · ${item.completed_nodes} / ${item.total_nodes} 완료`;
+  const domainLabel = DOMAIN_LABEL[item.domain] || DOMAIN_LABEL.ai_ml;
+  metaLine.textContent = `${domainLabel} · ${formatCreatedAt(item.created_at)} · ${item.completed_nodes} / ${item.total_nodes} 완료`;
 
   const miniBar = document.createElement("div");
   miniBar.className = "library-row-bar";
@@ -1110,6 +1256,21 @@ function buildLibraryRow(item) {
 
   main.append(titleLine, metaLine, miniBar);
   main.addEventListener("click", () => openLibraryCurriculum(item.id));
+
+  // 원본은 그대로 두고 자연어 조건을 추가해서 새 커리큘럼으로 만드는 기능 —
+  // 클릭하면 바로 API를 부르지 않고 아래에 입력 폼을 펼친다(칩 추가 버튼과 같은
+  // 펼침 패턴, buildChipAddControl 참고).
+  const regenerateForm = buildRegenerateForm(item);
+
+  const regenerateBtn = document.createElement("button");
+  regenerateBtn.type = "button";
+  regenerateBtn.className = "library-row-regenerate";
+  regenerateBtn.textContent = "🔁 재생성";
+  regenerateBtn.title = "자연어 조건을 추가해서 새 커리큘럼으로 다시 만들기";
+  regenerateBtn.addEventListener("click", (event) => {
+    event.stopPropagation();
+    regenerateForm.hidden = !regenerateForm.hidden;
+  });
 
   const deleteBtn = document.createElement("button");
   deleteBtn.type = "button";
@@ -1127,8 +1288,76 @@ function buildLibraryRow(item) {
     }
   });
 
-  row.append(main, deleteBtn);
-  return row;
+  row.append(main, regenerateBtn, deleteBtn);
+  wrap.append(row, regenerateForm);
+  return wrap;
+}
+
+// "재생성" 버튼을 누르면 펼쳐지는 폼 — 자연어 조건을 받아서 /regenerate를 호출한다.
+// 성공하면 목록을 새로고침해서(renderLibraryList) 새로 생긴 항목이 최신순으로
+// 맨 위에 나타나고, 원본 항목은 그대로 목록에 남아있다.
+function buildRegenerateForm(item) {
+  const form = document.createElement("div");
+  form.className = "library-regenerate-form";
+  form.hidden = true;
+
+  const label = document.createElement("p");
+  label.className = "library-regenerate-label";
+  label.textContent = "원본은 그대로 두고, 아래 조건을 반영한 새 커리큘럼을 만들어요.";
+
+  const textarea = document.createElement("textarea");
+  textarea.className = "library-regenerate-input";
+  textarea.rows = 3;
+  textarea.placeholder = "예: 저는 이미 어텐션은 알아요. 실무 적용 사례 위주로 더 자세히 알고 싶어요.";
+
+  const errorEl = document.createElement("p");
+  errorEl.className = "curriculum-error";
+  errorEl.hidden = true;
+
+  const actions = document.createElement("div");
+  actions.className = "library-regenerate-actions";
+
+  const submitBtn = document.createElement("button");
+  submitBtn.type = "button";
+  submitBtn.className = "curriculum-action-btn";
+  submitBtn.textContent = "새 커리큘럼 만들기";
+
+  const cancelBtn = document.createElement("button");
+  cancelBtn.type = "button";
+  cancelBtn.className = "curriculum-btn";
+  cancelBtn.textContent = "취소";
+  cancelBtn.addEventListener("click", () => {
+    form.hidden = true;
+    errorEl.hidden = true;
+  });
+
+  submitBtn.addEventListener("click", async () => {
+    const interest = textarea.value.trim();
+    if (!interest) {
+      errorEl.textContent = "추가하고 싶은 조건을 자연어로 적어주세요.";
+      errorEl.hidden = false;
+      return;
+    }
+    submitBtn.disabled = true;
+    cancelBtn.disabled = true;
+    errorEl.hidden = true;
+    const originalText = submitBtn.textContent;
+    submitBtn.textContent = "AI가 새 커리큘럼을 만드는 중... (최대 1분 정도 걸려요)";
+    try {
+      await postJSON(`/api/curriculum/${item.id}/regenerate`, { interest });
+      renderLibraryList();
+    } catch (err) {
+      errorEl.textContent = err.message || "새 커리큘럼을 만들지 못했어요.";
+      errorEl.hidden = false;
+      submitBtn.disabled = false;
+      cancelBtn.disabled = false;
+      submitBtn.textContent = originalText;
+    }
+  });
+
+  actions.append(submitBtn, cancelBtn);
+  form.append(label, textarea, actions, errorEl);
+  return form;
 }
 
 async function openLibraryCurriculum(curriculumId) {
@@ -1165,7 +1394,7 @@ async function handleSubmit(event) {
   searchKeywordsBannerEl.style.display = "none";
 
   try {
-    const data = await postJSON("/api/recommend", { interest, keywords, count });
+    const data = await postJSON("/api/recommend", { interest, keywords, count, domain: domainSelect.value });
     renderSearchKeywordsBanner(data.search_keywords);
     renderResults(data.papers);
   } catch (err) {
@@ -1202,7 +1431,8 @@ async function handleKeywordCurriculumSubmit(event) {
       target_type: "keyword",
       keyword,
       use_rag: keywordCurriculumRagCheckbox.checked,
-      interest: interestInput.value.trim(),
+      interest: keywordCurriculumContextEl.value.trim(),
+      domain: domainSelect.value,
     });
     renderCurriculumGraph(keywordCurriculumResultEl, data);
   } catch (err) {
@@ -1247,6 +1477,8 @@ async function init() {
 
   const tiers = await fetchJSON("/api/tiers");
   renderTierLegend(tiers);
+
+  renderExampleList();
 }
 
 init();

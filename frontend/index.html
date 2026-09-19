@@ -18,12 +18,21 @@
         <span class="topbar-logo" aria-hidden="true">◆</span>
         AILearning
       </span>
+      <label class="topbar-domain">
+        <span class="topbar-domain-label">전공 분야</span>
+        <select id="domain-select">
+          <option value="ai_ml">인공지능 / 머신러닝</option>
+          <option value="other">기타 이공계 분야 (논문 근거만 사용)</option>
+        </select>
+      </label>
     </div>
   </nav>
   <div class="page">
     <header class="hero">
       <h1>AILearning</h1>
-      <p class="hero-sub">관심 분야로 논문을 추천받거나, 논문 한 편이나 키워드 하나로 그걸 이해하기 위한 커리큘럼(지식 노드 맵)을 만들어드려요.</p>
+      <p class="hero-sub">관심 분야로 논문을 추천받거나, 논문 한 편이나 키워드 하나로 그걸 이해하기 위한 커리큘럼(지식 노드 맵)을 만들어드려요. <br> 
+      인공지능 분야에 한해서 더욱 정확한 자료를 제공하지만, 다른 이공계 분야도 논문을 기반으로 수준 높은 커리큘럼을 생성해드립니다.
+      </p>
     </header>
 
     <nav class="tabs" role="tablist" aria-label="주요 기능">
@@ -83,7 +92,7 @@
       <div class="tab-panel" id="tab-panel-curriculum" role="tabpanel" aria-labelledby="tab-btn-curriculum" hidden>
         <section class="panel curriculum-panel">
           <h2>키워드로 커리큘럼 만들기</h2>
-          <p class="panel-sub">특정 논문이 아니어도 괜찮아요. "Transformer", "CNN"처럼 개념 하나로도 그걸 이해하기 위한 지식 노드 맵을 만들 수 있어요. (논문별 커리큘럼은 "논문 검색" 탭의 추천 결과 카드에서 만들 수 있어요.)</p>
+          <p class="panel-sub">특정 논문이 아니어도 괜찮아요. "Transformer", "CNN"처럼 개념 하나로도 그걸 이해하기 위한 지식 노드 맵을 만들 수 있어요. (논문별 커리큘럼은 "논문 검색" 탭의 추천 결과 카드에서 만들 수 있어요.) 위 상단바에서 고른 <strong>전공 분야</strong>가 여기서도 그대로 적용돼요.</p>
           <form id="keyword-curriculum-form">
             <div class="field">
               <label for="keyword-curriculum-input">키워드</label>
@@ -93,6 +102,14 @@
                 placeholder="예: Transformer, CNN, Diffusion Model..."
                 autocomplete="off"
               />
+            </div>
+            <div class="field">
+              <label for="keyword-curriculum-context">추가 설명 <span class="field-hint">(선택 — 자연어로 원하는 조건을 적어주세요)</span></label>
+              <textarea
+                id="keyword-curriculum-context"
+                rows="3"
+                placeholder="예: 저는 CNN은 이미 알아요. 실무 적용 사례 위주로, 수식보다는 직관 위주로 설명해주세요."
+              ></textarea>
             </div>
             <label class="rag-toggle">
               <input type="checkbox" id="keyword-curriculum-rag" checked />
@@ -105,6 +122,16 @@
       </div>
 
       <div class="tab-panel" id="tab-panel-library" role="tabpanel" aria-labelledby="tab-btn-library" hidden>
+        <section class="panel" id="example-section" hidden>
+          <div class="example-section-header">
+            <h2>예시 커리큘럼</h2>
+            <button type="button" id="example-toggle-btn" class="example-toggle-btn">숨기기</button>
+          </div>
+          <div id="example-body">
+            <p class="panel-sub">유명한 AI/ML 논문들로 미리 만들어본 커리큘럼이에요. 모두에게 똑같이 보이는 읽기 전용 예시라, 완료 표시나 AI 설명 요청은 할 수 없어요.</p>
+            <div id="example-list" class="library-list"></div>
+          </div>
+        </section>
         <section class="panel">
           <h2>내 커리큘럼</h2>
           <p class="panel-sub">한 번 만든 커리큘럼은 저장돼요. 노드를 배웠으면 완료 표시를 하고, 더 자세한 설명도 AI에게 요청할 수 있어요.</p>

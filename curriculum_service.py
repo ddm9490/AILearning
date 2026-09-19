@@ -18,15 +18,32 @@ from keyword_catalog import extract_keywords, resolve_keyword
 
 KNOWLEDGE_BASE_HITS_LIMIT = 30
 
+# AI/ML 도메인만 D2L/HF Course/Spinning Up 교재 RAG를 쓴다 — 셋 다 AI/ML 전용
+# 교재라 다른 분야에 그대로 섞으면 엉뚱한 배경지식이 낀다. 다른 분야는 아직 전용
+# 교재 소스를 준비하지 못했으니, 논문(arXiv) 근거만 쓰는 "*_no_textbook" provider로
+# 대체한다 — 새 교재 소스가 생기면 여기에 도메인 하나 추가하면 된다.
+AI_ML_DOMAIN = "ai_ml"
 
-def generate_curriculum(target_label, target_description, target, provider_name, interest):
+
+def provider_name_for(target_type, use_rag, domain):
+    if not use_rag:
+        return "none"
+    if domain == AI_ML_DOMAIN:
+        return target_type
+    return f"{target_type}_no_textbook"
+
+
+def generate_curriculum(target_label, target_description, target, provider_name, interest, domain=AI_ML_DOMAIN):
     provider = context_providers.PROVIDERS.get(provider_name, context_providers.no_rag_provider)
     context_chunks = provider(target)
 
     # RAG로 얻은 발췌문이 있으면 거기서, 없으면 목표 자체(라벨+설명)에서 참고 지식
     # 베이스를 뽑는다 — 어느 쪽이든 흐름 1/2와 같은 사전 매칭 RAG 패턴을 재사용한다.
+    # keyword_catalog는 전부 AI/ML 용어라서 다른 분야에서는 아예 쓰지 않는다(resolve_keyword
+    # 호출부의 use_catalog와 같은 이유 — 흔한 단어가 AI/ML 용어와 우연히 겹치는 걸 방지).
+    use_catalog = domain == AI_ML_DOMAIN
     grounding_text = " ".join(context_chunks) if context_chunks else f"{target_label} {target_description}"
-    known_keywords = extract_keywords(grounding_text, limit=KNOWLEDGE_BASE_HITS_LIMIT)
+    known_keywords = extract_keywords(grounding_text, limit=KNOWLEDGE_BASE_HITS_LIMIT) if use_catalog else []
 
     raw = llm_service.generate_curriculum(
         target_label=target_label,
@@ -34,6 +51,7 @@ def generate_curriculum(target_label, target_description, target, provider_name,
         context_chunks=context_chunks,
         interest_text=interest,
         known_keywords=known_keywords,
+        domain=domain,
     )
 
     nodes = raw.get("nodes", [])
@@ -49,9 +67,10 @@ def generate_curriculum(target_label, target_description, target, provider_name,
             "learning_points": node.get("learning_points", []),
             # concepts는 이제 {name, tier} 객체 — tier는 LLM이 직접 매긴 판정으로,
             # resolve_keyword가 카탈로그/별칭 어디에서도 못 찾은 새 용어에 한해서만
-            # 이 값을 대신 쓴다(카탈로그에 있으면 그쪽이 우선).
+            # 이 값을 대신 쓴다(카탈로그에 있으면 그쪽이 우선). AI/ML이 아닌 분야는
+            # use_catalog=False라 카탈로그를 아예 안 보고 LLM 판정만 쓴다.
             "concepts": [
-                resolve_keyword(c.get("name", ""), c.get("tier")) for c in node.get("concepts", [])
+                resolve_keyword(c.get("name", ""), c.get("tier"), use_catalog) for c in node.get("concepts", [])
             ],
             "is_target": bool(node.get("is_target")),
             "layer": layer_of.get(node["id"], 0),

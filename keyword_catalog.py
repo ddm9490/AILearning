@@ -164,7 +164,7 @@ KEYWORD_CATALOG = {
 }
 
 
-def resolve_keyword(name, fallback_tier=None):
+def resolve_keyword(name, fallback_tier=None, use_catalog=True):
     """name을 카탈로그에서 찾아 tier를 붙인다. 정확한 카탈로그 표기("Layer
     Normalization")뿐 아니라 별칭/표기 변형("LayerNorm", "layer norm")도 알아본다 —
     LLM이 만든 키워드는 카탈로그 표기 그대로 안 나올 때가 많아서(예: "self-attention"
@@ -174,12 +174,21 @@ def resolve_keyword(name, fallback_tier=None):
     fallback_tier: 카탈로그/별칭 어디에도 없을 때 쓸 tier id(0~6). LLM이 새 키워드를
     만들 때 스스로 매긴 tier를 넘겨주면, 우리 카탈로그에 없는 용어도 색이 생긴다 —
     카탈로그에 있는 용어는 항상 카탈로그 판정이 우선(일관성 보장), 없는 용어만
-    LLM 판정을 대신 쓴다."""
-    tier_id = KEYWORD_CATALOG.get(name)
-    if tier_id is None:
-        canonical = _ALIAS_TO_CANONICAL.get(name.strip().lower())
-        if canonical:
-            tier_id = KEYWORD_CATALOG.get(canonical)
+    LLM 판정을 대신 쓴다.
+
+    use_catalog=False면 카탈로그/별칭 조회를 아예 건너뛰고 fallback_tier만 쓴다 —
+    KEYWORD_CATALOG는 전부 AI/ML 용어라서, 예를 들어 물리학 논문의 "Momentum"(운동량,
+    기초 물리량)이 카탈로그의 "Momentum"(SGD의 모멘텀, tier 3 최적화 기법)과 우연히
+    이름이 겹치면 완전히 엉뚱한 tier/색이 붙어버린다. AI/ML이 아닌 분야에서는 이런
+    오매칭을 피하기 위해 카탈로그를 참고하지 않고 LLM이 그 자리에서 직접 매긴 tier를
+    그대로 신뢰한다."""
+    tier_id = None
+    if use_catalog:
+        tier_id = KEYWORD_CATALOG.get(name)
+        if tier_id is None:
+            canonical = _ALIAS_TO_CANONICAL.get(name.strip().lower())
+            if canonical:
+                tier_id = KEYWORD_CATALOG.get(canonical)
     if tier_id is None and fallback_tier in TIER_BY_ID:
         tier_id = fallback_tier
     tier = TIER_BY_ID.get(tier_id)

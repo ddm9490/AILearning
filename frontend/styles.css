@@ -165,6 +165,33 @@ body {
   max-width: 1080px;
   margin: 0 auto;
   padding: 14px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* 모든 탭에서 같은 전공 분야가 적용되니, 특정 탭 폼 안이 아니라 상단바에 둬서
+   어느 탭에 있든 항상 보이고 바꿀 수 있게 했다. */
+.topbar-domain {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.topbar-domain-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.topbar-domain #domain-select {
+  width: auto;
+  padding: 7px 34px 7px 12px;
+  font-size: 0.85rem;
+  background-color: var(--surface-sunken);
 }
 
 .topbar-brand {
@@ -291,7 +318,9 @@ body {
 
 #interest-input,
 #count-input,
-#keyword-curriculum-input {
+#keyword-curriculum-input,
+#keyword-curriculum-context,
+#domain-select {
   width: 100%;
   padding: 12px 14px;
   border-radius: var(--radius-sm);
@@ -305,10 +334,38 @@ body {
 
 #interest-input:focus,
 #count-input:focus,
-#keyword-curriculum-input:focus {
+#keyword-curriculum-input:focus,
+#keyword-curriculum-context:focus,
+#domain-select:focus {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+#keyword-curriculum-context {
+  resize: vertical;
+  min-height: 64px;
+  line-height: 1.5;
+}
+
+/* <select>는 브라우저 기본 화살표/패딩이 OS마다 달라서 위 인풋들 옆에 두면 확
+   튀어 보였다("디자인이 구리다"는 민원 계기) — appearance:none으로 기본 크롬을
+   지우고, 인풋과 같은 톤(--text-muted)의 화살표를 직접 그려 넣어 통일감을 준다. */
+#domain-select {
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  padding-right: 40px;
+  background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2012%208%22%3E%3Cpath%20fill%3D%22none%22%20stroke%3D%22%236b6d80%22%20stroke-width%3D%221.6%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20d%3D%22M1%201l5%205%205-5%22/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  background-size: 12px 8px;
+}
+
+@media (prefers-color-scheme: dark) {
+  #domain-select {
+    background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2012%208%22%3E%3Cpath%20fill%3D%22none%22%20stroke%3D%22%2396969f%22%20stroke-width%3D%221.6%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20d%3D%22M1%201l5%205%205-5%22/%3E%3C/svg%3E");
+  }
 }
 
 .chip-row {
@@ -496,6 +553,17 @@ body {
   margin: 2px 0 10px;
 }
 
+/* "왜 이 논문이 추천됐는지 알려달라"는 피드백으로 추가됨 — 처음엔 accent 배경
+   박스로 강조했는데 카드에서 차지하는 비중이 너무 크다는 피드백을 받아서, 배경/
+   굵은 글씨를 빼고 옅은 색 텍스트 한 줄로 줄였다(.paper-meta와 비슷한 무게감). */
+.paper-reason {
+  color: var(--accent);
+  font-size: 0.84rem;
+  font-weight: 500;
+  line-height: 1.5;
+  margin: 0 0 10px;
+}
+
 .paper-links {
   flex-shrink: 0;
   display: flex;
@@ -521,8 +589,10 @@ body {
 
 .paper-summary {
   margin: 10px 0 0;
-  font-size: 0.92rem;
-  line-height: 1.6;
+  /* 본문 기본 크기(16px)보다 작아서 읽기 불편하다는 민원을 받아 1rem으로 올렸다 —
+     .paper-title(1.05rem)보다는 여전히 작아서 위계는 그대로 유지된다. */
+  font-size: 1rem;
+  line-height: 1.65;
   color: var(--text);
 }
 
@@ -687,6 +757,19 @@ body {
   display: inline-block;
   padding: 4px 12px;
   border-radius: 999px;
+  margin: 0 0 12px;
+}
+
+/* RAG 배너(--accent)나 "다음 학습 추천"(--curriculum-next-accent) 색과 겹치면
+   "이게 무슨 상태 표시인지" 헷갈리니(이미 한 번 겪은 문제) 중립 톤으로 분리했다. */
+.curriculum-regen-banner {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--chip-bg);
+  display: block;
+  padding: 4px 12px;
+  border-radius: var(--radius-sm);
   margin: 0 0 12px;
 }
 
@@ -1182,6 +1265,42 @@ body {
   margin-top: 36px;
 }
 
+/* "예시 커리큘럼" 섹션 헤더 — 숨기기 토글 버튼을 제목과 같은 줄 오른쪽에 둔다.
+   숨긴 상태에서도 이 헤더(+버튼)는 계속 보여야 다시 펼칠 수 있어서, 숨김은
+   #example-body(설명+목록)에만 적용하고 헤더는 절대 안 숨긴다. */
+.example-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.example-section-header h2 {
+  margin: 0;
+}
+
+.example-toggle-btn {
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 0.78rem;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.example-toggle-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+#example-body {
+  margin-top: 16px;
+}
+
 /* "내 커리큘럼" 탭 */
 .library-list {
   display: grid;
@@ -1212,10 +1331,33 @@ body {
 }
 
 .library-row-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-weight: 700;
   font-size: 0.95rem;
+  min-width: 0;
+}
+
+.library-row-title-text {
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* 재생성된 커리큘럼은 target_label이 원본과 똑같아서(같은 목표) 목록에서 구분이
+   안 됐다 — 제목 옆에 작은 배지 하나로 "이건 원본에서 자연어 조건을 추가해 다시
+   만든 버전"이라는 걸 표시한다. 제목이 길어 말줄임될 때도 배지는 항상 보이도록
+   title-text에만 ellipsis를 걸고 배지는 별도로 뺐다. */
+.library-row-badge {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.68rem;
+  font-weight: 700;
   white-space: nowrap;
 }
 
@@ -1254,6 +1396,67 @@ body {
 .library-row-delete:hover {
   border-color: #dc2626;
   color: #dc2626;
+}
+
+.library-row-regenerate {
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 0.75rem;
+  padding: 6px 11px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.library-row-regenerate:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* "재생성" 버튼을 누르면 행 아래로 펼쳐지는 자연어 입력 폼 — 원본은 그대로 두고
+   새 항목을 만드는 흐름이라, 목록 행 자체와는 별도의 카드로 살짝 구분해서 보여준다. */
+.library-regenerate-form {
+  margin-top: 8px;
+  padding: 14px 16px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.library-regenerate-label {
+  margin: 0 0 8px;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.library-regenerate-input {
+  width: 100%;
+  resize: vertical;
+  min-height: 60px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid var(--border);
+  background: var(--surface-sunken);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.library-regenerate-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.library-regenerate-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
 }
 
 #library-detail-panel {
