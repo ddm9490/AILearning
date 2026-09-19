@@ -1,6 +1,12 @@
 .env
 .venv
 CLAUDE.md
-data/
+# data/*.pkl(D2L/HF Course/Spinning Up RAG 인덱스 캐시)은 커밋한다 — GitHub Actions로
+# 자동 배포되는 파이프라인이 git checkout만으로 빌드되는데, 이 파일들이 여기 없으면
+# textbook_index.py를 배포 때 다시 돌릴 방법이 없어서(git CLI도 없고 3개 합쳐 13분+
+# 걸림) 교재 RAG가 프로덕션에서 조용히 빈 리스트만 반환하며 동작을 안 하고 있었다.
+# app.db(런타임에 계속 바뀌는 SQLite 저장소)만 계속 제외한다.
+data/app.db
+data/app.db-journal
 __pycache__/
 *.pyc
