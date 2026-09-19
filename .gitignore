@@ -5,7 +5,10 @@ CLAUDE.md
 # 자동 배포되는 파이프라인이 git checkout만으로 빌드되는데, 이 파일들이 여기 없으면
 # textbook_index.py를 배포 때 다시 돌릴 방법이 없어서(git CLI도 없고 3개 합쳐 13분+
 # 걸림) 교재 RAG가 프로덕션에서 조용히 빈 리스트만 반환하며 동작을 안 하고 있었다.
-# app.db(런타임에 계속 바뀌는 SQLite 저장소)만 계속 제외한다.
+# data/db/(런타임에 계속 바뀌는 SQLite 저장소, Fly.io에서는 영구 볼륨이 마운트되는
+# 경로)만 계속 제외한다. data/app.db*는 이 경로로 옮기기 전(영구 볼륨 도입 전)에
+# 쓰던 예전 위치 — 로컬에 남아있을 수 있어 계속 걸러준다.
+data/db/
 data/app.db
 data/app.db-journal
 __pycache__/

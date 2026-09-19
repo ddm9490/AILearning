@@ -8,10 +8,11 @@
 # data/*.pkl(D2L/HF Course/Spinning Up RAG 인덱스 캐시)는 이미지에 포함시킨다 —
 # 컨테이너 안에는 git이 없고 textbook_index.py의 오프라인 빌드(clone+임베딩)를 배포
 # 때마다 돌릴 이유도 없으니, `fly deploy` 전에 로컬에서 `python3 textbook_index.py`로
-# 미리 만들어둔 캐시를 그대로 구워 넣는다. app.db(런타임에 계속 바뀌는 SQLite
-# 저장소)만 제외해서 배포마다 로컬 테스트 데이터가 섞여 들어가지 않게 한다.
-data/app.db
-data/app.db-journal
+# 미리 만들어둔 캐시를 그대로 구워 넣는다. data/db/(런타임에 계속 바뀌는 SQLite
+# 저장소, Fly.io 영구 볼륨 마운트 경로)만 제외해서 로컬 테스트 데이터가 이미지에
+# 섞여 들어가지 않게 한다 — 어차피 볼륨이 이 경로를 덮어써서 이미지 안 내용은
+# 무시되지만, 이미지 크기를 불필요하게 키우지 않으려는 목적도 있다.
+data/db/
 
 # flyctl launch added from .venv/.gitignore
 # Created by venv; see https://docs.python.org/3/library/venv.html

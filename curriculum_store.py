@@ -19,7 +19,11 @@ import time
 import uuid
 from pathlib import Path
 
-DB_PATH = Path(__file__).parent / "data" / "app.db"
+# data/db/ 서브폴더에 따로 둔다 — data/ 바로 아래엔 커밋된 RAG 인덱스 pkl들이
+# 같이 있는데, Fly.io 영구 볼륨을 data/ 전체에 마운트하면 이미지에 구워둔 pkl들이
+# (마운트가 그 경로를 통째로 가려버려서) 안 보이게 된다. DB만 별도 서브폴더에 둬서
+# 그 폴더 하나만 볼륨으로 마운트하면 pkl은 그대로 이미지에 남고 DB만 영구 저장된다.
+DB_PATH = Path(__file__).parent / "data" / "db" / "app.db"
 
 # 모든 사용자에게 공유되는 읽기 전용 예시 커리큘럼(유명 AI/ML 논문)을 저장할 때 쓰는
 # 예약된 owner_id. uuid4().hex(32자리 순수 hex 문자열)만 실제 owner_id 쿠키값으로

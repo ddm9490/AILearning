@@ -6,12 +6,22 @@
 app = 'ailearning'
 primary_region = 'nrt'
 
+# 영구 볼륨 — 이게 없으면 SQLite 커리큘럼 저장소(data/db/app.db)가 Machine의
+# 임시 디스크에만 있어서, 배포(git push)로 Machine이 새로 만들어질 때마다 사용자가
+# 저장한 커리큘럼/완료 상태가 전부 사라진다("시간이 지나면 내용이 휘발되는" 원인).
+# 실제로 마운트되려면 배포 전에 `fly volumes create ailearning_data --region nrt
+# --size 1`을 한 번 실행해서 볼륨 자체를 만들어둬야 한다(볼륨은 코드로 자동 생성이
+# 안 되고, 비용이 발생하는 실제 인프라 자원이라 flyctl로 직접 만들어야 함).
+[[mounts]]
+  source = "ailearning_data"
+  destination = "/code/data/db"
+
 [build]
 [http_service]
   internal_port = 8080
   force_https = true
   auto_stop_machines = 'stop'
-  auto_start_machines = true
+  auto_start_machines = false
   min_machines_running = 0
   processes = ['app']
 
